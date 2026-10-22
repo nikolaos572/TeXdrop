@@ -37,8 +37,8 @@ def test_rejections_come_back_as_archive_errors(make_archive, tmp_path):
 def test_memory_limit_of_the_helper(make_archive):
     archive = make_archive({"main.tex": MINIMAL_TEX}, "tar.xz")
     assert Unpacker(LIMIT, memory_bytes=0).inspect(archive).main == "main.tex"  # 0: no limit
-    with pytest.raises(ArchiveError, match="Cannot allocate memory"):
-        Unpacker(LIMIT, memory_bytes=1024**2).inspect(archive)  # less than the xz decoder needs
+    with pytest.raises(ArchiveError, match="^unpacking the archive ran out of memory$"):
+        Unpacker(LIMIT, memory_bytes=1024**2).inspect(archive)  # less than the helper already uses
 
 
 # Runs the helper's main() with extract_archive() replaced by attempts to escape.

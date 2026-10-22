@@ -447,7 +447,8 @@ cannot be submitted.
   - `unsafe path in the archive: '../outside.tex'`
   - `cannot read the zip archive: ...` (a damaged archive; libarchive's reason follows)
   - `unpacking the archive took longer than 5 minutes`
-  - `the archive could not be unpacked` (for example, it needs more memory than `unpack_memory_mb`)
+  - `unpacking the archive ran out of memory` (it needs more than `unpack_memory_mb`)
+  - `the archive could not be unpacked` (the unpacking process failed, for example for lack of memory)
 - `413`: `the upload exceeds the 100 MB limit` (judged from `Content-Length`, before the
   upload is read) or `the file exceeds the 100 MB limit` (found while reading it).
 - `422`: no `file` field.
