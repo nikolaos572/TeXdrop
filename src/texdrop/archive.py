@@ -13,6 +13,7 @@ The server runs these functions only in a confined helper process (see unpack).
 
 from __future__ import annotations
 
+import errno
 import re
 from contextlib import nullcontext
 from dataclasses import dataclass
@@ -141,6 +142,8 @@ def _scan(path: Path, max_bytes: int, destination: Path | None) -> ArchiveInfo:
                 except OSError as exc:
                     raise ArchiveError(f"cannot extract {name!r}: {exc.strerror}") from None
     except libarchive.exception.ArchiveError as exc:
+        if exc.errno == errno.ENOMEM:  # libarchive's message depends on which allocation failed
+            raise ArchiveError("unpacking the archive ran out of memory") from None
         raise ArchiveError(f"cannot read the {archive_format.name} archive: {exc.msg}") from None
     if not files:
         raise ArchiveError("the archive contains no files")
