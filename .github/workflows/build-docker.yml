@@ -14,7 +14,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Free disk space for the TeX Live image
         run: |
@@ -28,7 +28,7 @@ jobs:
         run: docker save texdrop:latest | gzip > texdrop.tar.gz
 
       - name: Upload Docker image as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: texdrop-image
           path: texdrop.tar.gz
