@@ -26,6 +26,8 @@ class Settings:
     unpack_timeout_seconds: float = 300  # inspecting or unpacking one archive
     unpack_memory_bytes: int = 4 * 1024**3  # address space of the archive helper; 0: no limit
     allow_unsandboxed: bool = False  # start even where the sandbox lacks some of its protections
+    enable_mcp: bool = False  # serve the MCP endpoint for AI agents, and its transfer links
+    link_expiry_seconds: float = 3600  # a transfer link not used by then stops working
     host: str = "0.0.0.0"  # where the server listens (without Docker; Docker maps the port instead)
     port: int = 8000
 
@@ -54,6 +56,8 @@ class Settings:
             unpack_timeout_seconds=60 * _integer(env, "UNPACK_TIMEOUT_MINUTES", default=5, minimum=1),
             unpack_memory_bytes=1024**2 * _integer(env, "UNPACK_MEMORY_MB", default=4096, minimum=0),
             allow_unsandboxed=_flag(env, "ALLOW_UNSANDBOXED"),
+            enable_mcp=_flag(env, "ENABLE_MCP"),
+            link_expiry_seconds=60 * _integer(env, "LINK_EXPIRY_MINUTES", default=60, minimum=1),
             host=env.get("HOST", "").strip() or "0.0.0.0",
             port=_integer(env, "PORT", default=8000, minimum=1, maximum=65535),
         )

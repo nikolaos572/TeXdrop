@@ -1,10 +1,7 @@
-import json
 import logging
-import os
 import re
 import shutil
 import signal
-import socket
 import subprocess
 import sys
 import time
@@ -14,7 +11,16 @@ from pathlib import Path
 import httpx2
 import pytest
 from fastapi.testclient import TestClient
-from helpers import MINIMAL_TEX, TOKENS, run_queue, submit, write_archive
+from helpers import (
+    MINIMAL_TEX,
+    TOKENS,
+    free_port,
+    run_queue,
+    server_environment,
+    start_server,
+    submit,
+    write_archive,
+)
 
 from texdrop import logs
 from texdrop.__main__ import SHUTDOWN_SECONDS
@@ -136,49 +142,7 @@ def test_without_a_writable_directory_the_console_still_logs(tmp_path, root_logg
     assert "no log file: cannot write" in caplog.text
 
 
-# The real server, as python -m texdrop starts it.
-
-
-def free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return probe.getsockname()[1]
-
-
-def server_environment(data: Path, port: int) -> dict[str, str]:
-    # ALLOW_UNSANDBOXED: these tests are about logging, so they also run where the sandbox is incomplete.
-    # Without TZ, which a test sets when it needs it.
-    environment = {name: value for name, value in os.environ.items() if name != "TZ"}
-    return environment | {"DATA_DIR": str(data), "HOST": "127.0.0.1", "PORT": str(port), "ALLOW_UNSANDBOXED": "1"}
-
-
-def start_server(data: Path, port: int, **env: str) -> subprocess.Popen[str]:
-    """Run the server and wait until it answers."""
-    server = subprocess.Popen(
-        [sys.executable, "-m", "texdrop"],
-        env=server_environment(data, port) | env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    deadline = time.monotonic() + 60
-    while True:
-        try:
-            httpx2.get(f"http://127.0.0.1:{port}/api/health").raise_for_status()
-            return server
-        except httpx2.HTTPError:
-            if time.monotonic() > deadline or server.poll() is not None:
-                server.kill()
-                raise AssertionError(f"the server did not start:\n{server.communicate()[0]}") from None
-            time.sleep(0.2)
-
-
-@pytest.fixture
-def data(tmp_path: Path) -> Path:
-    data = tmp_path / "data"
-    data.mkdir()
-    (data / "config.json").write_text(json.dumps({"users": TOKENS}))
-    return data
+# The real server, as python -m texdrop starts it, with its data directory from the data fixture.
 
 
 def test_the_server_logs_to_the_console_and_its_data_directory(data):

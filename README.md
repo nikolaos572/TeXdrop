@@ -18,6 +18,9 @@ through its HTTP API, and also has a simple web page.
   of the original archive, PDF and log, and deletion of one or all jobs.
 - **Sandboxed compilation**: documents cannot read other users' files or the tokens, and
   cannot use the network.
+- **MCP server for AI agents** (optional): Claude Code, Antigravity and other agents connect
+  with a token, find TeXdrop's tools, and compile projects, read the errors and download
+  the PDFs by themselves.
 
 ## Running it
 
@@ -48,8 +51,8 @@ The service also runs without Docker. For the full sandbox it needs Linux 6.12 o
 pick one of the archive's `.tex` files; then choose the engine and press **Compile**. The
 job list below shows each job's status (point at the **?** of a failed job to see its
 errors) and links to its PDF and log. **Server Info** shows
-the server's settings and limits. The buttons in the header choose a light or dark theme,
-or follow the browser's (Auto); the choice is remembered in the browser.
+the server's settings and limits. The buttons next to it choose a light or dark theme, or
+follow the browser's (Auto); the choice is remembered in the browser.
 
 **API**: send the token as `Authorization: Bearer <token>`.
 
@@ -63,6 +66,19 @@ curl -H "Authorization: Bearer $TOKEN" -o paper.pdf http://localhost:8000/api/jo
 The **[API documentation](docs/API.md)** describes every endpoint with its parameters,
 responses and errors, how jobs behave, and has complete examples for building a client.
 
+**AI agents (MCP)**: start the server with `-e ENABLE_MCP=1`, then give the agent the
+address of `/mcp` and your token, for example in Claude Code:
+
+```bash
+claude mcp add --transport http texdrop http://localhost:8000/mcp --header "Authorization: Bearer $TOKEN"
+```
+
+The agent finds TeXdrop's tools and uses them by itself: it uploads the project, follows
+the job, reads TeX's errors and downloads the PDF, with the same jobs as the web page.
+Files travel through short-lived links that work only from the agent's computer.
+**[MCP.md](docs/MCP.md)** has the details: other agents (Antigravity), the tools, reverse
+proxies and security.
+
 ## Documentation
 
 - [Deployment](docs/DEPLOYMENT.md): requirements, building, running with or without Docker,
@@ -71,6 +87,8 @@ responses and errors, how jobs behave, and has complete examples for building a 
   defaults, fixed limits.
 - [API documentation](docs/API.md): every endpoint, its parameters, responses and errors,
   how jobs behave, and examples in the shell and Python.
+- [MCP server](docs/MCP.md): connecting AI agents (Claude Code, Antigravity), the tools,
+  transfer links, reverse proxies and security.
 - [Security](docs/SECURITY.md): the sandbox and the other protections, older kernels, and
   how to report a vulnerability.
 - [Development](docs/DEVELOPMENT.md): how it works, and the tests.

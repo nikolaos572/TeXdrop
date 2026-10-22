@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import io
 import os
+import socket
+import subprocess
+import sys
 import tarfile
+import time
 import zipfile
 from pathlib import Path
 
+import httpx2
 import libarchive
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -64,6 +69,40 @@ def process_exists(pid: int) -> bool:
     except ProcessLookupError:
         return False
     return True
+
+
+def free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def server_environment(data: Path, port: int) -> dict[str, str]:
+    # ALLOW_UNSANDBOXED: the tests that run the real server are not about the sandbox, so they also
+    # run where it is incomplete. Without TZ, which a test sets when it needs it.
+    environment = {name: value for name, value in os.environ.items() if name != "TZ"}
+    return environment | {"DATA_DIR": str(data), "HOST": "127.0.0.1", "PORT": str(port), "ALLOW_UNSANDBOXED": "1"}
+
+
+def start_server(data: Path, port: int, **env: str) -> subprocess.Popen[str]:
+    """Run the real server, as python -m texdrop starts it, and wait until it answers."""
+    server = subprocess.Popen(
+        [sys.executable, "-m", "texdrop"],
+        env=server_environment(data, port) | env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    deadline = time.monotonic() + 60
+    while True:
+        try:
+            httpx2.get(f"http://127.0.0.1:{port}/api/health").raise_for_status()
+            return server
+        except httpx2.HTTPError:
+            if time.monotonic() > deadline or server.poll() is not None:
+                server.kill()
+                raise AssertionError(f"the server did not start:\n{server.communicate()[0]}") from None
+            time.sleep(0.2)
 
 
 def run_queue(app: FastAPI) -> None:

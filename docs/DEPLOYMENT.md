@@ -62,6 +62,9 @@ Use HTTPS (a reverse proxy in front of the service) when it is reachable beyond 
 network, and tell the server about the proxy with `FORWARDED_ALLOW_IPS`
 (see [CONFIGURATION.md](CONFIGURATION.md#environment-variables)).
 
+To let AI agents such as Claude Code use the service, add `-e ENABLE_MCP=1`: see
+[MCP.md](MCP.md).
+
 ### Without Docker
 
 Install Python 3.11+, libarchive (Debian/Ubuntu: `libarchive13t64`), TeX Live with `latexmk`,
@@ -152,4 +155,5 @@ Each line has the time (in the `TZ` time zone), the level and one event:
   has the rest).
 - Unexpected errors, at level `ERROR` and with their traceback.
 
-Tokens never appear in the log.
+Tokens never appear in the log, nor do the secrets of the MCP server's transfer links
+(logged as `/api/links/***`, with the reason when a link is refused).

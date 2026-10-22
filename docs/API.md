@@ -6,7 +6,9 @@ web page uses the same API, so anything it can do, a program can do too.
 
 This document describes the whole API: authentication, every endpoint with its
 parameters, responses and errors, how jobs behave, and complete examples. The server also
-serves its machine-readable description (see [OpenAPI](#openapi)).
+serves its machine-readable description (see [OpenAPI](#openapi)). AI agents can use the
+service through its MCP server instead, which offers the same operations as tools (see
+[MCP.md](MCP.md)).
 
 **Contents**
 
@@ -337,6 +339,7 @@ server is restarted while a job is `processing`, the job becomes `queued` again 
 | [`GET /api/jobs/{id}/log`](#get-apijobsidlog) | Download the log. |
 | [`GET /api/session`](#get-apisession) | Who you are. |
 | [`POST /api/session`](#post-apisession), [`DELETE /api/session`](#delete-apisession) | Log a browser in and out (the web page). |
+| [`POST /api/links/{secret}`, `GET /api/links/{secret}`](#transfer-links-apilinkssecret) | Upload or download through a transfer link of the MCP server (with `ENABLE_MCP=1`). |
 
 In paths, `{id}` is a job id: an integer from 1 to 9223372036854775807. Anything else gets
 `422`.
@@ -375,7 +378,9 @@ sending it.
     "compile_disk_mb": 0,
     "max_user_storage_mb": 0,
     "unpack_timeout_minutes": 5.0,
-    "unpack_memory_mb": 4096
+    "unpack_memory_mb": 4096,
+    "mcp_path": "/mcp",
+    "link_expiry_minutes": 60.0
   },
   "queue": {"queued": 3, "processing": 1},
   "account": {"user": "alice", "jobs": 12, "storage_bytes": 18350080}
@@ -398,6 +403,8 @@ sending it.
 | `server.max_user_storage_mb` | integer | Storage of each user's jobs; `0`: no limit. |
 | `server.unpack_timeout_minutes` | number | Time allowed to inspect or unpack an archive. |
 | `server.unpack_memory_mb` | integer | Memory allowed to inspect or unpack an archive; `0`: no limit. |
+| `server.mcp_path` | string or null | Where the [MCP server](MCP.md) answers, on this server's address (`"/mcp"`); `null` when it is off. |
+| `server.link_expiry_minutes` | number | A [transfer link](#transfer-links-apilinkssecret) stops working this long after it was made. |
 | `queue.queued` | integer | Jobs of all users waiting. |
 | `queue.processing` | integer | Jobs of all users compiling now (`0` or `1`). |
 | `account.user` | string | Your user name. |
@@ -649,6 +656,33 @@ than 256 characters.
 Logs a browser out: deletes the cookie. Needs no token.
 
 **Response** `204`, without a body.
+
+### Transfer links (`/api/links/{secret}`)
+
+Served only with `ENABLE_MCP=1`. The [MCP server](MCP.md)'s `upload_link` and
+`download_link` tools hand out these URLs, through which an agent moves files with `curl`.
+The secret in the URL stands in for the token, so these requests carry none; each link
+works only from the address that asked for it, for one complete transfer, and for
+`link_expiry_minutes` (see [Transfer links](MCP.md#transfer-links)).
+
+**`POST /api/links/{secret}`**, with an upload link: the same request as
+[`POST /api/jobs`](#post-apijobs) (the `file`, `main` and `engine` fields), with the same
+response (`201` and the new job) and errors. A refused upload leaves the link valid.
+
+**`GET /api/links/{secret}`**, with a download link: the file the link was made for, as
+[`GET /api/jobs/{id}/input`](#get-apijobsidinput), [`/pdf`](#get-apijobsidpdf) or
+[`/log`](#get-apijobsidlog) give it. A download cut off before its end, or of part of the
+file (a `Range` request), leaves the link valid.
+
+**Errors**: `404` with the same message whatever the reason (the link does not exist, has
+expired or been used, is used from another address or with the other method, or its user
+was removed), which goes to the server's log:
+
+```json
+{"detail": "no such link: links expire, work once and only from the address they were made for; ask for a new one"}
+```
+
+The link is checked as soon as the request arrives, before an upload is read.
 
 ## Examples
 

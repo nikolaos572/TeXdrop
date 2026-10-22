@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 
 from fastapi import FastAPI, Request, Response, status
 from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
@@ -18,6 +18,8 @@ from .cleanup import CleanupScheduler
 from .compiler import LatexCompiler, tex_directories
 from .errors import InvalidInput
 from .jobs import JobService
+from .links import REFUSAL, LinkRefused, LinkService
+from .mcp_server import McpEndpoint
 from .settings import Settings, SettingsError
 from .storage import Storage
 from .store import JobStore
@@ -58,6 +60,7 @@ def create_app(settings: Settings | None = None, compiler: LatexCompiler | None 
     )
     worker = Worker(service, compiler, storage)
     cleanup = CleanupScheduler(service, settings.auto_delete_days)
+    mcp = McpEndpoint(settings) if settings.enable_mcp else None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -73,9 +76,13 @@ def create_app(settings: Settings | None = None, compiler: LatexCompiler | None 
             log.warning("running with reduced protection, as ALLOW_UNSANDBOXED=1 allows")
         else:
             log.info("every protection of the sandbox is active")
+        if mcp is not None:
+            minutes = settings.link_expiry_seconds / 60
+            log.info("MCP server at %s, transfer links valid for %g minute(s)", api.MCP_PATH, minutes)
         worker.start()
         cleanup.start()
-        yield
+        async with mcp.running() if mcp is not None else nullcontext():
+            yield
         cleanup.stop()
         worker.stop()
 
@@ -85,6 +92,8 @@ def create_app(settings: Settings | None = None, compiler: LatexCompiler | None 
     app.state.users = UserRegistry(storage.config_path)
     app.state.service = service
     app.state.worker = worker
+    if mcp is not None:
+        app.state.links = LinkService(storage.db_path, settings.link_expiry_seconds)
 
     # Every refusal also gives its reason to the access log.
     def refuse(request: Request, status_code: int, detail: str) -> JSONResponse:
@@ -94,6 +103,12 @@ def create_app(settings: Settings | None = None, compiler: LatexCompiler | None 
     @app.exception_handler(InvalidInput)
     async def invalid_input(request: Request, exc: InvalidInput) -> JSONResponse:
         return refuse(request, status.HTTP_400_BAD_REQUEST, str(exc))
+
+    @app.exception_handler(LinkRefused)
+    async def link_refused(request: Request, exc: LinkRefused) -> JSONResponse:
+        # The same answer whatever the reason, which goes only to the access log.
+        logs.record_error(request, str(exc))
+        return JSONResponse({"detail": REFUSAL}, status_code=status.HTTP_404_NOT_FOUND)
 
     @app.exception_handler(HTTPException)
     async def http_error(request: Request, exc: HTTPException) -> Response:
@@ -127,6 +142,11 @@ def create_app(settings: Settings | None = None, compiler: LatexCompiler | None 
 
     app.middleware("http")(logs.access_log)  # added last, so it runs first and sees every response
     app.include_router(api.router)
+    if mcp is not None:
+        app.include_router(api.link_router)
+        # POST only: the server sends nothing on its own, so it offers no event stream (GET), and
+        # being stateless it has no sessions to end (DELETE). Both get 405, as the protocol allows.
+        app.add_route(api.MCP_PATH, mcp, methods=["POST"], include_in_schema=False)
     app.include_router(web.router)
     app.mount("/static", StaticFiles(directory=web.STATIC_DIR), name="static")
     return app

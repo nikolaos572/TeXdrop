@@ -44,6 +44,15 @@ def settings(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture
+def data(tmp_path: Path) -> Path:
+    """A data directory with the test users, for the real server (helpers.start_server)."""
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "config.json").write_text(json.dumps({"users": TOKENS}))
+    return data
+
+
+@pytest.fixture
 def fake_compiler(tmp_path: Path) -> LatexCompiler:
     return LatexCompiler(30, latexmk=("sh", "-c", FAKE_LATEXMK, "latexmk"), template=tmp_path / "no-template")
 

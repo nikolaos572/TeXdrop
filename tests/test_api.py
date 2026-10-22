@@ -268,6 +268,7 @@ def test_info_reports_settings_queue_and_usage(client, app, make_archive, settin
     assert (server["compile_timeout_minutes"], server["max_upload_mb"], server["max_extracted_mb"]) == (0.5, 2, 20)
     assert (server["compile_memory_mb"], server["compile_disk_mb"], server["max_user_storage_mb"]) == (0, 0, 0)
     assert (server["unpack_timeout_minutes"], server["unpack_memory_mb"]) == (5, 4096)
+    assert (server["mcp_path"], server["link_expiry_minutes"]) == (None, 60)  # MCP is off unless ENABLE_MCP=1
     assert info["queue"] == {"queued": 2, "processing": 0}  # of all users
     files = [path for path in (settings.data_dir / "users" / "alice").rglob("*") if path.is_file()]
     assert len(files) == 4  # two archives, a PDF and a log
