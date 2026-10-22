@@ -10,6 +10,18 @@ function limit(megabytes) {
   return megabytes ? `${megabytes} MB` : "No limit";
 }
 
+// The address to give an AI agent: the server's as this browser reaches it (behind a proxy, the proxy's).
+function showMcp(server) {
+  if (!server.mcp_path) {
+    $("mcp").textContent = "Off (ENABLE_MCP=1 turns it on)";
+    return;
+  }
+  const address = document.createElement("code");
+  address.textContent = new URL(server.mcp_path, location.origin).href;
+  const lifetime = plural(server.link_expiry_minutes, "minute");
+  $("mcp").replaceChildren(address, `, with transfer links valid for ${lifetime}`);
+}
+
 async function loadInfo() {
   try {
     const { server, queue, account } = await api("/api/info");
@@ -30,6 +42,7 @@ async function loadInfo() {
       ? `${plural(server.auto_delete_days, "day")} after a job finishes`
       : "Never: jobs stay until you delete them";
     $("timezone").textContent = server.timezone;
+    showMcp(server);
     $("queued").textContent = plural(queue.queued, "job");
     $("processing").textContent = plural(queue.processing, "job");
     $("account-user").textContent = account.user;

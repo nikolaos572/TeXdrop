@@ -25,6 +25,17 @@ def current_user(request: Request, credentials: HTTPAuthorizationCredentials | N
         token = request.cookies.get(COOKIE_NAME, "")
         if token and request.method not in _SAFE_METHODS and CSRF_HEADER not in request.headers:
             raise HTTPException(status.HTTP_403_FORBIDDEN, f"cookie-authenticated requests need a {CSRF_HEADER} header")
+    return _authenticated(request, token)
+
+
+async def header_user(request: Request) -> str:
+    """Like current_user, but only from the Authorization header, never the cookie: for the
+    MCP endpoint, which no web page calls."""
+    credentials = await _bearer(request)
+    return _authenticated(request, credentials.credentials if credentials is not None else "")
+
+
+def _authenticated(request: Request, token: str) -> str:
     user = registry(request).authenticate(token) if token else None
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "missing or invalid token", headers={"WWW-Authenticate": "Bearer"})

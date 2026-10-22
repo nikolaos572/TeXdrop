@@ -72,6 +72,16 @@ def test_changes_are_picked_up_without_restart(tmp_path):
     assert registry.authenticate("b" * 20) is None
 
 
+def test_exists_follows_the_file(tmp_path):
+    path = tmp_path / "config.json"
+    _write(path, {"alice": GOOD_TOKEN})
+    registry = UserRegistry(path)
+    assert (registry.exists("alice"), registry.exists("bob")) == (True, False)
+    _write(path, {"bob": "b" * 20})
+    os.utime(path, ns=(1, 1))
+    assert (registry.exists("alice"), registry.exists("bob")) == (False, True)
+
+
 def test_broken_edit_keeps_previous_users(tmp_path):
     path = tmp_path / "config.json"
     _write(path, {"alice": GOOD_TOKEN})

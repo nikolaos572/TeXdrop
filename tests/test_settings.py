@@ -16,6 +16,7 @@ def test_defaults():
     # No limits of our own: whatever the container may use.
     assert (settings.compile_memory_bytes, settings.compile_disk_bytes, settings.max_user_storage_bytes) == (0, 0, 0)
     assert (settings.unpack_timeout_seconds, settings.unpack_memory_bytes) == (300, 4096 * 1024**2)
+    assert (settings.enable_mcp, settings.link_expiry_seconds) == (False, 3600)  # off unless asked for
     assert (settings.host, settings.port) == ("0.0.0.0", 8000)
 
 
@@ -32,6 +33,8 @@ def test_values_from_environment():
             "MAX_USER_STORAGE_MB": "500",
             "UNPACK_TIMEOUT_MINUTES": "2",
             "UNPACK_MEMORY_MB": "0",
+            "ENABLE_MCP": "1",
+            "LINK_EXPIRY_MINUTES": "15",
             "HOST": "127.0.0.1",
             "PORT": "8200",
         }
@@ -45,6 +48,7 @@ def test_values_from_environment():
     assert settings.compile_disk_bytes == 2048 * 1024**2
     assert settings.max_user_storage_bytes == 500 * 1024**2
     assert (settings.unpack_timeout_seconds, settings.unpack_memory_bytes) == (120, 0)
+    assert (settings.enable_mcp, settings.link_expiry_seconds) == (True, 15 * 60)
     assert (settings.host, settings.port) == ("127.0.0.1", 8200)
 
 
@@ -80,6 +84,9 @@ def test_allow_unsandboxed_flag(value, expected):
         ("TZ", "Mars/Olympus", "IANA time zone"),
         ("TZ", "../../etc/passwd", "IANA time zone"),
         ("ALLOW_UNSANDBOXED", "maybe", "must be 1 or 0"),
+        ("ENABLE_MCP", "on", "must be 1 or 0"),
+        ("LINK_EXPIRY_MINUTES", "0", "at least 1"),
+        ("LINK_EXPIRY_MINUTES", "1h", "must be an integer"),
     ],
 )
 def test_invalid_values_are_rejected(name, value, message):

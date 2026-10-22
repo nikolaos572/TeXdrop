@@ -21,7 +21,8 @@ FILE_BYTES = 10 * 1024**2  # at this size the file becomes server.log.1, the pre
 BACKUPS = 4  # ... and the oldest beyond .4 is deleted: the log takes at most 50 MB
 _FORMAT = "%(asctime)s %(levelname)-7s %(message)s"
 _DATE_FORMAT = "%Y-%m-%d %H:%M:%S %z"
-_DOWNLOAD = re.compile(r"/api/jobs/\d+/(input|pdf|log)")
+_DOWNLOAD = re.compile(r"/api/jobs/\d+/(input|pdf|log)|/api/links/[^/]+")
+_LINK_SECRET = re.compile(r"(?<=^/api/links/)[^/]+")  # stands in for a token, so never logged
 _CONTROL = re.compile(r"[\x00-\x1f\x7f\x85  ]")
 
 log = logging.getLogger(__name__)
@@ -74,7 +75,7 @@ def _log_request(request: Request, status: int, start: float) -> None:
     path = request.scope["path"]
     if status < 400 and request.method in ("GET", "HEAD") and not _DOWNLOAD.fullmatch(path):
         return
-    target = quote(path)
+    target = _LINK_SECRET.sub("***", quote(path))
     if query := request.scope["query_string"]:
         target += "?" + one_line(query.decode("latin-1"))
     client = request.client.host if request.client else "-"

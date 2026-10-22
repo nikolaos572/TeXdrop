@@ -18,7 +18,8 @@ The code is in `src/texdrop/`, one module per concern, each starting with a docs
 that says what it does: `settings`, `users` (tokens), `store` (SQLite), `storage` (file
 layout), `archive` (safe extraction and main-file detection), `unpack` (runs `archive` in a
 confined helper process), `sandbox`, `compiler`, `jobs` (job lifecycle), `worker` (queue),
-`cleanup` (auto-delete), `auth`, `api`, `web`, `logs` and `app` (wiring). The web page is
+`cleanup` (auto-delete), `auth`, `api`, `links` (transfer links), `mcp_server` (the MCP
+server for AI agents, whose tools call `api`'s code), `web`, `logs` and `app` (wiring). The web page is
 plain HTML, CSS and JavaScript in `src/texdrop/static/`, with no build step.
 What keeps documents apart is described in [SECURITY.md](SECURITY.md).
 

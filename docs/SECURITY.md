@@ -44,6 +44,12 @@ disk as it is given. This page describes what keeps documents and users apart, a
   header or the cookie, never in URLs. The cookie is `HttpOnly`, `SameSite=Strict`,
   `Secure` over HTTPS, and changes made with it require a header that other sites
   cannot send. Pages are served with a strict Content Security Policy.
+- The [MCP server](MCP.md) for AI agents is off unless `ENABLE_MCP=1`. It accepts the
+  token only in the `Authorization` header (not the cookie), and its tools run the API's
+  code, with its checks. Files move through transfer links, whose URLs hold a 256-bit
+  random secret instead of the token: a link works only from the address that asked for
+  it, for one complete transfer of one file, and for `LINK_EXPIRY_MINUTES`. Every refusal
+  gets the same `404`; the server keeps only the secrets' SHA-256 and never logs them.
 - Use HTTPS (a reverse proxy) when the service is reachable beyond a trusted network.
 
 Time, memory, disk and storage can be limited further with the settings in
@@ -94,6 +100,8 @@ These are vulnerabilities:
   another job's files, `config.json` or the database, writes outside its own directory, uses
   the network, signals processes outside its sandbox, or keeps running after its job ends.
 - Access to another user's jobs, or to the API without a valid token.
+- A transfer link of the MCP server that works from another address, after it expired or
+  was used up, for another file, or for another user.
 - Script injection into the web page, or a change another site can make with a user's cookie.
 - A way around a configured limit (compilation time, memory or disk, upload size, storage)
   or a [fixed limit](CONFIGURATION.md#fixed-limits).
@@ -104,6 +112,10 @@ These are not:
   protections are listed under [Older kernels](#older-kernels).
 - A document using the time, memory and disk it is allowed: set the limits in
   [CONFIGURATION.md](CONFIGURATION.md) and the [container's limits](DEPLOYMENT.md#container-limits).
-- Tokens read off a connection without HTTPS.
+- Tokens or transfer links read off a connection without HTTPS.
+- Transfer links bound to the wrong address because of the deployment: behind a reverse
+  proxy that `FORWARDED_ALLOW_IPS` does not name, or with `FORWARDED_ALLOW_IPS=*` while
+  TeXdrop's port can be reached without the proxy.
+- What an AI agent does with the errors and logs of the documents it compiles.
 - Bugs in TeX Live, Ghostscript or the other programs in the image: report them to their
   maintainers. They are a TeXdrop vulnerability when they let a document get past the sandbox.

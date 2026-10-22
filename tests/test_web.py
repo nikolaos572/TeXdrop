@@ -32,6 +32,7 @@ def test_info_page_needs_a_login(app):
     browser.post("/api/session", json={"token": TOKENS["alice"]})
     page = browser.get("/info")
     assert 'id="storage"' in page.text
+    assert 'id="mcp"' in page.text  # whether the MCP server is on, and its address
     assert page.headers["Cache-Control"] == "no-store"
     assert "script-src 'self'" in page.headers["Content-Security-Policy"]
     assert '<a href="/docs" class="pill"' in page.text  # the API documentation is linked from here

@@ -66,6 +66,12 @@ class UserRegistry:
                 user = name
         return user
 
+    def exists(self, user: str) -> bool:
+        """Whether `user` is (still) in the file."""
+        with self._lock:
+            self._reload(strict=False)
+            return user in self._tokens.values()
+
     def _reload(self, *, strict: bool) -> None:
         """Re-read the file if it changed. A broken edit keeps the previous users,
         except at startup (`strict`), where it is an error."""

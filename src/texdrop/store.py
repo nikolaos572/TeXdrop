@@ -4,7 +4,8 @@ SQLite is a library, not a server: the database is the file jobs.db in the data
 directory (with -wal/-shm companions while it is open). WAL mode lets web
 requests read while the worker writes. Every transaction opens its own
 short-lived connection, so no connection is ever shared between threads, and
-write transactions are serialized by SQLite itself (BEGIN IMMEDIATE).
+write transactions are serialized by SQLite itself (BEGIN IMMEDIATE). The links
+module keeps its table in the same database, through connect().
 """
 
 from __future__ import annotations
@@ -74,7 +75,7 @@ END AS queue_position FROM jobs
 class JobStore:
     def __init__(self, path: Path) -> None:
         self._path = path
-        with closing(self._connect()) as conn:
+        with closing(connect(path)) as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript(_SCHEMA)
 
@@ -82,7 +83,7 @@ class JobStore:
     def transaction(self, *, write: bool) -> Iterator[JobTable]:
         """Run the enclosed queries atomically. Work done inside a write
         transaction (such as moving files) happens before any other write."""
-        with closing(self._connect()) as conn:
+        with closing(connect(self._path)) as conn:
             conn.execute("BEGIN IMMEDIATE" if write else "BEGIN")
             try:
                 yield JobTable(conn)
@@ -91,11 +92,14 @@ class JobStore:
                 raise
             conn.execute("COMMIT")
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self._path, timeout=30, isolation_level=None)  # explicit transactions
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA synchronous=NORMAL")  # durable enough with WAL, and faster
-        return conn
+
+def connect(path: Path) -> sqlite3.Connection:
+    """A new connection to the database. Each statement commits on its own unless the
+    caller starts a transaction (BEGIN)."""
+    conn = sqlite3.connect(path, timeout=30, isolation_level=None)  # explicit transactions
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA synchronous=NORMAL")  # durable enough with WAL, and faster
+    return conn
 
 
 class JobTable:

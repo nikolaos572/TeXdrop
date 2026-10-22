@@ -206,6 +206,34 @@ def test_limits_come_from_the_environment(image, data):
         server.stop()
 
 
+def test_the_mcp_server_is_off_unless_enabled(server):
+    assert server.client.post("/mcp", json={}).status_code == 404
+    assert server.client.get("/api/info").json()["server"]["mcp_path"] is None
+
+
+def test_the_mcp_server_compiles_through_links(image, data, tmp_path):
+    server = Server(image, data, "--env", "ENABLE_MCP=1", "--env", "LINK_EXPIRY_MINUTES=5")
+
+    def call(tool: str, **arguments) -> dict:
+        request = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": tool, "arguments": arguments}}
+        response = server.client.post("/mcp", json=request, headers={"Accept": "application/json, text/event-stream"})
+        result = response.json()["result"]
+        assert not result["isError"], result
+        return result["structuredContent"]
+
+    try:
+        assert call("server_info")["server"]["link_expiry_minutes"] == 5
+        archive = write_archive(tmp_path / "paper.zip", {"main.tex": HELLO})
+        with archive.open("rb") as file:  # without the token: the link stands in for it
+            job = httpx2.post(call("upload_link")["url"], files={"file": (archive.name, file)}).json()
+        while (status := call("get_job", job_id=job["id"])["status"]) in ("queued", "processing"):
+            pass
+        assert status == "done"
+        assert httpx2.get(call("download_link", job_id=job["id"], file="pdf")["url"]).content.startswith(b"%PDF")
+    finally:
+        server.stop()
+
+
 def test_the_health_check_follows_port(image, data):
     container = docker(
         "run", "--detach", "--volume", f"{data}:/data", "--env", "PORT=9000", "--health-interval", "1s",
