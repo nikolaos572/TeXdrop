@@ -1,0 +1,36 @@
+name: Build and Export Docker Image
+
+on:
+  workflow_dispatch:
+
+# Add this global environment variable to silence the warning
+# and force the runner to use Node 24 for the actions.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-and-export:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free disk space for the TeX Live image
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Build Docker image
+        run: docker build --no-cache -t texdrop:latest .
+
+      - name: Save and compress Docker image
+        run: docker save texdrop:latest | gzip > texdrop.tar.gz
+
+      - name: Upload Docker image as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: texdrop-image
+          path: texdrop.tar.gz
+          retention-days: 1
+          compression-level: 0 # already gzipped

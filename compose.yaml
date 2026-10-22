@@ -1,0 +1,21 @@
+# Example deployment: docker compose up -d
+# Before the first start: mkdir data && sudo chown 1001:1001 data, then create data/config.json.
+# Every setting is described in docs/CONFIGURATION.md, the container's resource limits in docs/DEPLOYMENT.md.
+services:
+  texdrop:
+    image: texdrop:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    environment:
+      TZ: UTC                    # time zone used to display dates, e.g. Europe/Athens
+      AUTO_DELETE_DAYS: "0"      # delete jobs finished more than N days ago (0 = never)
+      COMPILE_TIMEOUT_MINUTES: "15"
+      MAX_UPLOAD_MB: "100"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+
+# Runtime data (mounted volume when run locally)
+/data/
+
+# Uploaded or sample projects must never be committed
+*.zip
+*.7z
+*.tar
+*.tar.*
+*.tgz
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store

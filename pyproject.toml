@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=77"]  # for the SPDX license expression
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "texdrop"
+version = "1.0.0"
+description = "Compile LaTeX projects (zip, tar, 7z) to PDF through a token-protected web API and UI."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.159,<1",
+    "uvicorn>=0.54,<1",
+    "python-multipart>=0.0.32",
+    "libarchive-c>=5.3,<6",
+    "tzdata>=2026.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9",
+    "httpx2>=2.16",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+texdrop = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "latex: compiles real documents (skipped when latexmk is not installed)",
+    "docker: builds the Docker image and tests the running container",
+]
+filterwarnings = ["error::pytest.PytestUnraisableExceptionWarning"]
