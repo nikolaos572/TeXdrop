@@ -71,7 +71,8 @@ responses and errors, how jobs behave, and has complete examples for building a 
   defaults, fixed limits.
 - [API documentation](docs/API.md): every endpoint, its parameters, responses and errors,
   how jobs behave, and examples in the shell and Python.
-- [Security](docs/SECURITY.md): the sandbox and the other protections, and older kernels.
+- [Security](docs/SECURITY.md): the sandbox and the other protections, older kernels, and
+  how to report a vulnerability.
 - [Development](docs/DEVELOPMENT.md): how it works, and the tests.
 
 ## License

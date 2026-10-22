@@ -2,7 +2,8 @@
 
 Every uploaded document is treated as hostile: TeX is a programming language, and a
 document can read files, run the programs TeX Live allows, and use as much time, memory and
-disk as it is given. This page describes what keeps documents and users apart.
+disk as it is given. This page describes what keeps documents and users apart, and how to
+[report a vulnerability](#reporting-a-vulnerability).
 
 ## Protections
 
@@ -71,3 +72,38 @@ Independent of the kernel version:
 - Processes a document leaves behind are found through `/proc`; without it only those still in
   the compilation's process group are killed.
 - Run the server as an unprivileged user: as root, documents run as root too.
+
+## Reporting a vulnerability
+
+Report vulnerabilities privately, with
+[Report a vulnerability](https://github.com/nikolaos572/TeXdrop/security/advisories/new)
+on the repository's Security tab, never in a public issue. Please include:
+
+- what an attacker can do, and what they need (a user's token, or nothing);
+- a document or archive that shows it, and the steps to reproduce it;
+- the TeXdrop version or commit, the kernel version (`uname -r`), and whether the service
+  runs in Docker.
+
+The report is confirmed and the fix prepared in private. Once it is released, the issue is
+published as a security advisory that credits the reporter (unless they prefer not to be
+named). Please keep the issue private until then. Fixes go into the latest version only.
+
+These are vulnerabilities:
+
+- A document or archive that gets past a protection described above: it reads or changes
+  another job's files, `config.json` or the database, writes outside its own directory, uses
+  the network, signals processes outside its sandbox, or keeps running after its job ends.
+- Access to another user's jobs, or to the API without a valid token.
+- Script injection into the web page, or a change another site can make with a user's cookie.
+- A way around a configured limit (compilation time, memory or disk, upload size, storage)
+  or a [fixed limit](CONFIGURATION.md#fixed-limits).
+
+These are not:
+
+- What a document can do with `ALLOW_UNSANDBOXED=1` or on a kernel before 6.12: the missing
+  protections are listed under [Older kernels](#older-kernels).
+- A document using the time, memory and disk it is allowed: set the limits in
+  [CONFIGURATION.md](CONFIGURATION.md) and the [container's limits](DEPLOYMENT.md#container-limits).
+- Tokens read off a connection without HTTPS.
+- Bugs in TeX Live, Ghostscript or the other programs in the image: report them to their
+  maintainers. They are a TeXdrop vulnerability when they let a document get past the sandbox.
