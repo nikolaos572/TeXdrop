@@ -59,6 +59,9 @@ def test_pages_choose_their_theme_before_painting(app):
         page = browser.get(path).text
         assert page.index(script) < page.index("</head>")
         assert all(f'data-theme-choice="{choice}"' in page for choice in ("light", "dark", "auto"))
+        # The switch follows the Server Info link; the user's name and Log out stay at the far right.
+        assert page.index('href="/info"') < page.index('class="theme-switch"') < page.index('class="spacer"')
+        assert page.index('class="spacer"') < page.index('id="user"') < page.index('id="logout"')
 
 
 def test_the_job_list_has_a_place_for_errors_over_the_page(app):

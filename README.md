@@ -48,8 +48,8 @@ The service also runs without Docker. For the full sandbox it needs Linux 6.12 o
 pick one of the archive's `.tex` files; then choose the engine and press **Compile**. The
 job list below shows each job's status (point at the **?** of a failed job to see its
 errors) and links to its PDF and log. **Server Info** shows
-the server's settings and limits. The buttons in the header choose a light or dark theme,
-or follow the browser's (Auto); the choice is remembered in the browser.
+the server's settings and limits. The buttons next to it choose a light or dark theme, or
+follow the browser's (Auto); the choice is remembered in the browser.
 
 **API**: send the token as `Authorization: Bearer <token>`.
 
