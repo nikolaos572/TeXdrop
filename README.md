@@ -66,18 +66,36 @@ curl -H "Authorization: Bearer $TOKEN" -o paper.pdf http://localhost:8000/api/jo
 The **[API documentation](docs/API.md)** describes every endpoint with its parameters,
 responses and errors, how jobs behave, and has complete examples for building a client.
 
-**AI agents (MCP)**: start the server with `-e ENABLE_MCP=1`, then give the agent the
-address of `/mcp` and your token, for example in Claude Code:
+**AI agents (MCP)**: off by default; add `-e ENABLE_MCP=1` to the `docker run`
+command above and TeXdrop serves an [MCP](https://modelcontextprotocol.io) server at
+`/mcp`. Configure an agent with the server's address and a user's token, and it finds
+the tools itself: it packs the project, uploads the archive, follows the job, reads
+TeX's errors, and saves the PDF or the full log. It needs to run shell commands
+(`curl`); files travel through short-lived links that work only from the agent's
+address. Connect it once:
 
 ```bash
-claude mcp add --transport http texdrop http://localhost:8000/mcp --header "Authorization: Bearer $TOKEN"
+export TEXDROP_TOKEN='<your token>'
+
+# Claude Code, for all projects
+claude mcp add --transport http --scope user texdrop http://localhost:8000/mcp \
+  --header "Authorization: Bearer $TEXDROP_TOKEN"
+
+# Codex CLI (it reads TEXDROP_TOKEN when it starts)
+codex mcp add texdrop --url http://localhost:8000/mcp \
+  --bearer-token-env-var TEXDROP_TOKEN
+
+# Antigravity (agy)
+agy mcp add --header "Authorization: Bearer $TEXDROP_TOKEN" texdrop http://localhost:8000/mcp
 ```
 
-The agent finds TeXdrop's tools and uses them by itself: it uploads the project, follows
-the job, reads TeX's errors and downloads the PDF, with the same jobs as the web page.
-Files travel through short-lived links that work only from the agent's computer.
-**[MCP.md](docs/MCP.md)** has the details: other agents (Antigravity), the tools, reverse
-proxies and security.
+Replace `localhost:8000` with the server's address when the agent runs elsewhere.
+
+Then ask, for example: *"Use TeXdrop to compile the LaTeX project in
+`~/papers/thesis.zip` and save the PDF as `~/Documents/pdfs/thesis.pdf` (create the
+directory if needed). If it fails, show me the TeX errors."*
+
+**[MCP.md](docs/MCP.md)** has the tools, transfer links, reverse proxies and security.
 
 ## Documentation
 
