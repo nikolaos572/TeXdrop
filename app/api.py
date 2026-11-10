@@ -24,6 +24,7 @@ from starlette.types import Message, Receive, Scope, Send
 
 from . import __version__
 from .auth import current_user, registry
+from .client import client_ip
 from .compiler import DEFAULT_ENGINE, ENGINES, tex_live_version
 from .jobs import JobService
 from .links import Link, LinkRefused, LinkService
@@ -59,6 +60,11 @@ class JobFile(StrEnum):
 def local_time(timestamp: float, timezone: ZoneInfo) -> str:
     """A Unix time as the API shows dates: ISO 8601, in the configured time zone."""
     return datetime.fromtimestamp(timestamp, timezone).isoformat(timespec="seconds")
+
+
+def base_url(request: Request) -> str:
+    """The URL the server is reached at: PUBLIC_BASE_URL, or the request's."""
+    return _settings(request).public_base_url or str(request.base_url).rstrip("/")
 
 
 class JobOut(BaseModel):
@@ -401,8 +407,7 @@ class _LinkRoute(APIRoute):
 
 def _checked_link(request: Request) -> Link:
     """The link in the request's path, if it may serve this request; raises LinkRefused otherwise."""
-    client = request.client.host if request.client else ""
-    link = _links(request).check(request.path_params["secret"], client, upload=request.method == "POST")
+    link = _links(request).check(request.path_params["secret"], client_ip(request), upload=request.method == "POST")
     if not registry(request).exists(link.user):  # removed from the users file since
         raise LinkRefused(f"link of {link.user!r}, who is no longer a user")
     request.state.user = link.user  # for the access log

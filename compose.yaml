@@ -1,5 +1,6 @@
 # Example deployment: docker compose up -d
-# Before the first start: mkdir data && sudo chown 1001:1001 data, then create data/config.json.
+# Before the first start: mkdir data && sudo chown -R 61001:61001 data.
+# After it, add users: docker compose exec texdrop python -m texdrop adduser <name>, which prints their token.
 # Every setting is described in docs/CONFIGURATION.md, the container's resource limits in docs/DEPLOYMENT.md.
 services:
   texdrop:
@@ -12,10 +13,12 @@ services:
       - ./data:/data
     environment:
       TZ: UTC                    # time zone used to display dates, e.g. Europe/Athens
+      PUBLIC_BASE_URL: ""        # e.g. https://texdrop.example.com: the address users reach (docs/CONFIGURATION.md)
       AUTO_DELETE_DAYS: "0"      # delete jobs finished more than N days ago (0 = never)
       COMPILE_TIMEOUT_MINUTES: "15"
       MAX_UPLOAD_MB: "100"
       ENABLE_MCP: "0"            # 1 serves the MCP server for AI agents at /mcp (docs/MCP.md)
+      FORWARDED_ALLOW_IPS: ""    # your reverse proxy's address, e.g. 172.17.0.1, to log visitors' addresses (docs/DEPLOYMENT.md)
     cap_drop:
       - ALL
     security_opt:

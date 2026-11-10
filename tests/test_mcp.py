@@ -16,7 +16,7 @@ from pathlib import Path
 import httpx2
 import pytest
 from fastapi.testclient import TestClient
-from helpers import MINIMAL_TEX, TOKENS, free_port, start_server, submit, write_archive
+from helpers import MINIMAL_TEX, TOKENS, browser_of, free_port, login, start_server, submit, write_archive
 from mcp.client.client import Client
 from mcp.client.streamable_http import streamable_http_client
 
@@ -113,11 +113,14 @@ def test_info_shows_the_endpoint_and_the_link_lifetime(agent):
         {},
         {"Authorization": "Bearer wrong-token-0123456789"},
         {"Authorization": f"Basic {TOKENS['alice']}"},
-        # The web page's cookie is not accepted, even with the header that marks the web page's requests.
-        {"Cookie": f"latex_token={TOKENS['alice']}", "X-Requested-With": "fetch"},
+        # The web page's cookie, with a session of alice's, is not accepted, even with the header that
+        # marks the web page's requests.
+        {"Cookie": "texdrop_session=<alice's session>", "X-Requested-With": "fetch"},
     ],
 )
-def test_the_endpoint_needs_the_token_in_the_authorization_header(agent, headers):
+def test_the_endpoint_needs_the_token_in_the_authorization_header(agent, mcp_app, headers):
+    if "Cookie" in headers:
+        headers = headers | {"Cookie": f"texdrop_session={login(mcp_app)}"}
     response = agent.curl.post("/mcp", headers=headers, json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
     assert response.status_code == 401
     assert response.headers["WWW-Authenticate"] == "Bearer"
@@ -253,10 +256,18 @@ def test_wrong_kind_of_link(agent, make_archive):
     assert agent.curl.get(download["url"]).status_code == 200  # neither attempt used it
 
 
+def test_links_start_with_public_base_url(mcp_settings, fake_compiler):
+    app = create_app(dataclasses.replace(mcp_settings, public_base_url="https://texdrop.example.com"), fake_compiler)
+    with TestClient(app, headers=ALICE) as client:
+        link = Agent(client, TestClient(app)).call("upload_link")
+    assert link["url"].startswith("https://texdrop.example.com/api/links/")
+    assert link["command"].endswith(f" {link['url']}")
+
+
 def test_links_of_removed_users_stop_working(agent, mcp_settings, make_archive, caplog):
     caplog.set_level(logging.INFO)
     link = agent.call("upload_link")
-    config = mcp_settings.data_dir / "config.json"
+    config = mcp_settings.users_file
     config.write_text(json.dumps({"users": {"bob": TOKENS["bob"]}}))
     os.utime(config, ns=(1, 1))  # noticed even on coarse clocks
     assert agent.upload(link, make_archive({"main.tex": MINIMAL_TEX})).status_code == 404
@@ -292,8 +303,7 @@ def test_jobs_are_shared_with_the_api_and_the_web_page(agent, mcp_app, make_arch
     listed = agent.call("list_jobs")
     assert [job["id"] for job in listed["jobs"]] == [through_link["id"], through_api["id"]]
     assert listed == agent.mcp.get("/api/jobs").json()
-    browser = TestClient(mcp_app, cookies={"latex_token": TOKENS["alice"]})
-    assert browser.get("/api/jobs").json()["total"] == 2
+    assert browser_of(mcp_app).get("/api/jobs").json()["total"] == 2
 
 
 def test_list_jobs_pages(agent, make_archive):

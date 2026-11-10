@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import io
+import itertools
+import json
 import os
 import socket
 import subprocess
@@ -40,6 +42,17 @@ printf '%%PDF-1.4 fake\n' > "$stem.pdf"
 """
 
 MINIMAL_TEX = "\\documentclass{article}\n\\begin{document}\nHello.\n\\end{document}\n"
+
+_mtimes = itertools.count(1)
+
+
+def write_json(path: Path, document: object) -> Path:
+    """Write a JSON file as the administrator would, with a new modification time each time, so that
+    the server notices the change even when the size stays the same and the clock is coarse."""
+    path.write_text(json.dumps(document), encoding="utf-8")
+    stamp = next(_mtimes) * 1_000_000_000
+    os.utime(path, ns=(stamp, stamp))
+    return path
 
 
 def write_archive(path: Path, files: dict[str, str | bytes], fmt: str = "zip") -> Path:
@@ -79,8 +92,10 @@ def free_port() -> int:
 
 def server_environment(data: Path, port: int) -> dict[str, str]:
     # ALLOW_UNSANDBOXED: the tests that run the real server are not about the sandbox, so they also
-    # run where it is incomplete. Without TZ, which a test sets when it needs it.
-    environment = {name: value for name, value in os.environ.items() if name != "TZ"}
+    # run where it is incomplete. Without the variables of TeXdrop the test process may have, nor TZ,
+    # which a test sets when it needs it.
+    names = ("TZ", "USERS_FILE", "ENABLE_MCP", "LINK_EXPIRY_MINUTES")
+    environment = {name: value for name, value in os.environ.items() if name not in names}
     return environment | {"DATA_DIR": str(data), "HOST": "127.0.0.1", "PORT": str(port), "ALLOW_UNSANDBOXED": "1"}
 
 
@@ -103,6 +118,30 @@ def start_server(data: Path, port: int, **env: str) -> subprocess.Popen[str]:
                 server.kill()
                 raise AssertionError(f"the server did not start:\n{server.communicate()[0]}") from None
             time.sleep(0.2)
+
+
+def run_cli(data: Path, *arguments: str, **env: str) -> subprocess.CompletedProcess[str]:
+    """python -m texdrop with `arguments`, as the administrator runs it."""
+    return subprocess.run(
+        [sys.executable, "-m", "texdrop", *arguments],
+        env=server_environment(data, free_port()) | env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+
+def login(app: FastAPI, user: str = "alice") -> str:
+    """Log a browser in as `user`, as the web page does: the value of its session cookie."""
+    response = TestClient(app).post("/api/session", json={"token": TOKENS[user]})
+    assert response.status_code == 200, response.text
+    return response.cookies["texdrop_session"]
+
+
+def browser_of(app: FastAPI, user: str = "alice", **options) -> TestClient:
+    """A client of `app`, logged in as `user` through the web page."""
+    return TestClient(app, cookies={"texdrop_session": login(app, user)}, **options)
 
 
 def run_queue(app: FastAPI) -> None:

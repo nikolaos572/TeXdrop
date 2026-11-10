@@ -22,10 +22,12 @@ dependencies = [
 dev = [
     "pytest>=9",
     "httpx2>=2.16",
+    "packaging>=24",  # tests/test_dependencies.py
 ]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.setuptools]
+packages = ["texdrop"]
+package-dir = {"texdrop" = "app"}  # the texdrop package lives in app/
 
 [tool.setuptools.package-data]
 texdrop = ["static/*"]

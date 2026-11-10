@@ -7,13 +7,16 @@ disk as it is given. This page describes what keeps documents and users apart, a
 
 ## Protections
 
-- The container runs as the unprivileged user `app` (uid 1001), never as root. The
-  server makes itself and everything it starts unable to gain privileges (as Docker's
+- The container runs as the unprivileged user `app`, uid and gid 61001, never as root. The
+  number is above the range Linux gives to real accounts (up to 60000), so it matches no
+  login of the host: should someone break out of the container, they would hold an id that
+  owns nothing there, rather than one such as uid 1000, which often has passwordless `sudo`.
+  The server makes itself and everything it starts unable to gain privileges (as Docker's
   `no-new-privileges` does), and the image has an init process that reaps processes
   left behind, so a plain `docker run` is as safe as `compose.yaml`.
 - Every compilation runs in a [Landlock](https://docs.kernel.org/userspace-api/landlock.html)
   sandbox (no privileges needed). It can read the system and TeX Live but no other
-  file: not other users' jobs, not `config.json`, not the database. It can write only
+  file: not other users' jobs, not `users.json`, not the database. It can write only
   its own work directory, and cannot signal processes outside it. TeX's own file
   restrictions are no substitute (`\input{/abs/path}` and Lua's `io.open` read any
   file). The sandbox has all its protections on Linux 6.12 or newer (x86-64 or ARM64);
@@ -41,9 +44,25 @@ disk as it is given. This page describes what keeps documents and users apart, a
   with relative paths, and are limited in size and entry count. Main file names are
   limited to characters that are safe on a shell command line.
 - Tokens are compared in constant time and accepted only in the `Authorization`
-  header or the cookie, never in URLs. The cookie is `HttpOnly`, `SameSite=Strict`,
-  `Secure` over HTTPS, and changes made with it require a header that other sites
-  cannot send. Pages are served with a strict Content Security Policy.
+  header, never in URLs. `python -m texdrop adduser` and `reset-token` make random 256-bit
+  tokens. The users file holds the tokens as they are, so `adduser` creates it readable only
+  by its owner; keep it that way.
+- The web page's cookie holds a session, not the token: a random 256-bit id, which the
+  server keeps in `sessions.json` only as its SHA-256, with that of the token it was started
+  with. Logging out ends the session on the server, so the cookie stops working everywhere,
+  also a copy of it taken before. A session also ends after 30 days, and as soon as its user
+  is removed or given a new token (`reset-token` logs every browser of the user out). The
+  cookie is `HttpOnly`, `SameSite=Strict`, `Secure` over HTTPS, and changes made with it
+  require a header that other sites cannot send. Pages are served with a strict Content
+  Security Policy.
+- A `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` header is not this server's is refused
+  (`403`) before anything else happens, the token and the body included: with
+  `PUBLIC_BASE_URL`, the origin must be exactly its scheme, host and port; without it, its
+  host must be the one the request was sent to. That stops forged requests from every other
+  site, sibling subdomains such as `blog.example.com` included (`SameSite` cookies take those
+  for the same site), also to the MCP server and the transfer links. Browsers always send
+  `Origin` with these requests; requests without it (curl, scripts, agents) cannot be forged
+  by a web page, so they pass, and still need a token.
 - The [MCP server](MCP.md) for AI agents is off unless `ENABLE_MCP=1`. It accepts the
   token only in the `Authorization` header (not the cookie), and its tools run the API's
   code, with its checks. Files move through transfer links, whose URLs hold a 256-bit
@@ -97,7 +116,7 @@ named). Please keep the issue private until then. Fixes go into the latest versi
 These are vulnerabilities:
 
 - A document or archive that gets past a protection described above: it reads or changes
-  another job's files, `config.json` or the database, writes outside its own directory, uses
+  another job's files, `users.json` or the database, writes outside its own directory, uses
   the network, signals processes outside its sandbox, or keeps running after its job ends.
 - Access to another user's jobs, or to the API without a valid token.
 - A transfer link of the MCP server that works from another address, after it expired or

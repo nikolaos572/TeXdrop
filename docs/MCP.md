@@ -1,6 +1,6 @@
 # MCP server
 
-AI agents such as Claude Code or Antigravity (`agy`) can use TeXdrop by themselves: with
+AI agents such as Claude Code, Codex or Antigravity (`agy`) can use TeXdrop by themselves: with
 the MCP server on, an agent connects to `https://<your server>/mcp` with a user's token,
 finds the operations TeXdrop offers, and compiles projects, follows their jobs and
 downloads the PDFs and logs. It works with the same jobs as the web page and the API: a job
@@ -33,7 +33,7 @@ docker run -d --name texdrop -p 8000:8000 -v "$PWD/data:/data" \
 (or `ENABLE_MCP: "1"` under `environment:` in `compose.yaml`, or `ENABLE_MCP=1` in the
 environment of `python -m texdrop`). The server then logs `MCP server at /mcp, transfer
 links valid for 60 minute(s)` at startup, and **Server Info** on the web page shows the
-address to give to agents, such as `https://texdrop.example.lan/mcp`.
+address to give to agents, such as `https://texdrop.example.com/mcp`.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -46,14 +46,18 @@ An agent needs the server's address with `/mcp` at the end, and a user's token, 
 sends in the `Authorization` header. It also needs to run shell commands, to pack the
 project into an archive and to run the `curl` commands the tools give it.
 
+```bash
+export TEXDROP_TOKEN='<your token>'
+```
+
 **Claude Code**: add the server once, for all your projects:
 
 ```bash
-claude mcp add --transport http --scope user texdrop https://texdrop.example.lan/mcp \
-  --header "Authorization: Bearer <your token>"
+claude mcp add --transport http --scope user texdrop https://texdrop.example.com/mcp \
+  --header "Authorization: Bearer $TEXDROP_TOKEN"
 ```
 
-or, for one project, in its `.mcp.json`, with the token taken from an environment variable
+or, for one project, in its `.mcp.json`, with the token taken from the environment variable
 (so that the file can be shared without it):
 
 ```json
@@ -61,17 +65,23 @@ or, for one project, in its `.mcp.json`, with the token taken from an environmen
   "mcpServers": {
     "texdrop": {
       "type": "http",
-      "url": "https://texdrop.example.lan/mcp",
+      "url": "https://texdrop.example.com/mcp",
       "headers": {"Authorization": "Bearer ${TEXDROP_TOKEN}"}
     }
   }
 }
 ```
 
+**Codex CLI**, which reads `TEXDROP_TOKEN` from its environment when it starts:
+
+```bash
+codex mcp add texdrop --url https://texdrop.example.com/mcp --bearer-token-env-var TEXDROP_TOKEN
+```
+
 **Antigravity** (`agy`), whose flags come before the name:
 
 ```bash
-agy mcp add --header "Authorization: Bearer <your token>" texdrop https://texdrop.example.lan/mcp
+agy mcp add --header "Authorization: Bearer $TEXDROP_TOKEN" texdrop https://texdrop.example.com/mcp
 ```
 
 which writes the server into `~/.gemini/config/mcp_config.json`:
@@ -82,19 +92,24 @@ which writes the server into `~/.gemini/config/mcp_config.json`:
     "texdrop": {
       "disabled": false,
       "headers": {"Authorization": "Bearer <your token>"},
-      "serverUrl": "https://texdrop.example.lan/mcp"
+      "serverUrl": "https://texdrop.example.com/mcp"
     }
   }
 }
 ```
 
-`claude mcp list` checks the connection (`texdrop: ... - ✔ Connected`), and `/mcp` in a
-session of either agent shows the server and its tools. Other agents work the same way if
-they support MCP's Streamable HTTP transport with a custom header; the server needs no
-OAuth.
+Replace `texdrop.example.com` with your server's address (`localhost:8000` when the agent
+runs on the same machine). `claude mcp list` checks the connection
+(`texdrop: ... - ✔ Connected`), and `/mcp` in a session of an agent shows the server and its
+tools. Other agents work the same way if they support MCP's Streamable HTTP transport with a
+custom header; the server needs no OAuth.
 
-Then ask the agent, for example, *"Compile the paper in this folder with TeXdrop and fix
-the errors"*.
+Then ask the agent, for example:
+
+- *"Compile the paper in this folder with TeXdrop and fix the errors."*
+- *"Use TeXdrop to compile the LaTeX project in `~/papers/thesis.zip` and save the PDF as
+  `~/Documents/pdfs/thesis.pdf` (create the directory if needed). If it fails, show me the
+  TeX errors."*
 
 ## How an agent compiles a project
 
@@ -104,12 +119,12 @@ instructions from you:
 1. The agent packs the project's folder into a `.zip` (or `.tar.gz`, `.tar.bz2`, `.tar.xz`,
    `.tar` or `.7z`) archive.
 2. It calls `upload_link` and runs the command it returns, such as
-   `curl -sS --fail-with-body -F file=@paper.zip https://texdrop.example.lan/api/links/kV3...`,
+   `curl -sS --fail-with-body -F file=@paper.zip https://texdrop.example.com/api/links/kV3...`,
    which prints the new job, with its id.
 3. It calls `get_job` until the job is `done` or `failed`. A failed job's `error` has the
    first lines of TeX's errors, which is usually enough to fix the document.
 4. It calls `download_link` for the PDF (or the full log) and runs the command it returns,
-   such as `curl -sS --fail-with-body -o main.pdf https://texdrop.example.lan/api/links/Qe9...`.
+   such as `curl -sS --fail-with-body -o main.pdf https://texdrop.example.com/api/links/Qe9...`.
 
 ## Tools
 
@@ -172,19 +187,16 @@ The links' endpoints are described in [API.md](API.md#transfer-links-apilinkssec
 ## Behind a reverse proxy
 
 The MCP server needs nothing special from a reverse proxy (nginx, nginx proxy manager,
-Caddy, Traefik, ...): its answers are plain JSON, without event streams or WebSockets. Two
-things matter, as for the rest of the service:
+Caddy, Traefik, ...): its answers are plain JSON, without event streams or WebSockets. What
+matters is what matters for the rest of the service (see
+[DEPLOYMENT.md](DEPLOYMENT.md#reverse-proxies)):
 
-- **`FORWARDED_ALLOW_IPS` must name the proxy** (see
-  [CONFIGURATION.md](CONFIGURATION.md#environment-variables)), and TeXdrop's port must be
-  reachable only from the proxy. The server then takes each client's address from the
-  proxy's `X-Forwarded-For`, which links are bound to, and the scheme from
-  `X-Forwarded-Proto`, which the links' URLs use. Without it, every request seems to come
-  from the proxy, so links would work from any client of the proxy, and their URLs would
-  start with `http://` while agents connect with `https://`. With Docker, the container
-  sees a proxy on the same machine coming from the Docker network's gateway (often
-  `172.17.0.1`), or from the proxy container's address when both are on the same Docker
-  network.
+- **`PUBLIC_BASE_URL`** should be the address agents connect to, such as
+  `https://texdrop.example.com`, so that the links' URLs start with it.
+- **The client's address** binds the links. **`FORWARDED_ALLOW_IPS` must name the proxy**,
+  as the container sees it (often `172.17.0.1`), so that TeXdrop takes each client's address
+  from the proxy's `X-Forwarded-For`. Until then, every request seems to come from the proxy,
+  and links would work for any client of the proxy.
 - **Timeouts and sizes.** `get_job` answers within 50 seconds, below nginx's default limit
   of 60. Uploads through links are as large as the archives: raise the proxy's limit
   (`client_max_body_size` for nginx) if it is below `MAX_UPLOAD_MB`.
@@ -195,8 +207,11 @@ things matter, as for the rest of the service:
 - **The same token and the same rights.** The agent uses a user's token and can do what
   that user can do through the API, on all their jobs, including deleting them all; the
   delete tools are marked destructive so that agents ask first. The endpoint accepts the
-  token only in the `Authorization` header, never the web page's cookie, so another web
-  site cannot call it from your browser.
+  token only in the `Authorization` header, never the web page's cookie, and refuses
+  (`403`) calls that a browser sends from a page of another site (its `Origin` header), so
+  another web site cannot call it from your browser. An MCP client that runs in a web page,
+  such as a browser-based inspector, is refused for the same reason: use one that runs
+  outside the browser, as agents do.
 - **The token stays out of the model.** The agent's MCP client adds the header itself: the
   token is not in the tools' descriptions, arguments or results, nor in the commands the
   agent runs. It is stored in the client's configuration file, in plain text: keep that

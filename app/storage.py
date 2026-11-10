@@ -1,6 +1,7 @@
 """Layout of the data directory (the volume mounted into the container).
 
-    <data>/config.json                       users and tokens
+    <data>/users.json                        users and tokens (USERS_FILE)
+    <data>/sessions.json                     the web page's sessions (sessions.py)
     <data>/jobs.db                           job metadata (SQLite)
     <data>/users/<user>/inputs/<id><ext>     uploaded archives
     <data>/users/<user>/outputs/<id>.pdf     compiled documents
@@ -8,34 +9,57 @@
     <data>/logs/server.log                   the server's log (written by the logs module)
     <data>/tmp/                              uploads in progress and compile work dirs
 
-It also measures and removes compile work dirs, whose content is hostile.
+It also measures and removes compile work dirs, whose content is hostile, and writes the
+files with secrets that the administrator's commands change.
 """
 
 from __future__ import annotations
 
+import errno
+import fcntl
+import json
 import os
 import shutil
 import stat
+import tempfile
 import uuid
 from collections.abc import Iterator
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from pathlib import Path
+from typing import Any
 
+from .errors import ConfigError
 from .users import NAME_PATTERN
+
+USERS_FILE = "users.json"
+OLD_USERS_FILE = "config.json"  # where TeXdrop kept the users before it had USERS_FILE
+PRIVATE_MODE = 0o600  # of a new file with secrets
 
 
 class Storage:
     def __init__(self, root: Path) -> None:
         self.root = root
-        self.config_path = root / "config.json"
         self.db_path = root / "jobs.db"
         self.tmp_dir = root / "tmp"
+        self.sessions_file = root / "sessions.json"
 
     def prepare(self) -> None:
         """Create the layout and discard leftovers of an interrupted run."""
         (self.root / "users").mkdir(parents=True, exist_ok=True)
         remove_tree(self.tmp_dir)
         self.tmp_dir.mkdir()
+
+    def adopt_old_users_file(self, users_file: Path) -> Path | None:
+        """Rename the users file of older versions, config.json, to users.json, when the users
+        file is the default one and does not exist yet. Returns the old path if it did."""
+        old = self.root / OLD_USERS_FILE
+        if users_file != self.root / USERS_FILE or os.path.lexists(users_file) or not old.is_file():
+            return None
+        try:
+            old.rename(users_file)
+        except OSError as exc:
+            raise ConfigError(f"cannot rename the users file {old} to {users_file} ({exc.strerror}): rename it yourself") from exc
+        return old
 
     def input_path(self, user: str, job_id: int, extension: str) -> Path:
         return self._user_dir(user) / "inputs" / f"{job_id}{extension}"
@@ -126,3 +150,60 @@ def _give_owner_rights(directory: Path) -> None:
         os.chmod(f"/proc/self/fd/{fd}", mode | stat.S_IRWXU)
     finally:
         os.close(fd)
+
+
+@contextmanager
+def locked_file(path: Path) -> Iterator[Path]:
+    """Let the administrator's commands on a file take turns, so that none undoes another's
+    change. Gives the file's real path: a link stays a link, and what it points to changes.
+    The lock is on the directory because the file itself gets replaced."""
+    path = path.resolve()
+    descriptor = os.open(path.parent, os.O_RDONLY)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield path
+    finally:
+        os.close(descriptor)  # releases the lock
+
+
+def write_secret_json(path: Path, value: dict[str, Any], *, fresh: bool = False) -> None:
+    """Replace a file with secrets (users.json, sessions.json) atomically, so that the server
+    never reads a part of it. The new file keeps the owner and mode of the old one. Without
+    one, or when `fresh`, it is private to the directory's owner, so that the server can still
+    read it when root runs the command."""
+    current = None
+    if not fresh:
+        with suppress(FileNotFoundError):
+            current = path.stat()
+    owner = current or path.parent.stat()
+    mode = stat.S_IMODE(current.st_mode) if current else PRIVATE_MODE
+    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")  # private
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+            with suppress(OSError):  # only root can give a file to another user
+                os.fchown(file.fileno(), owner.st_uid, owner.st_gid)
+            os.fchmod(file.fileno(), mode)
+            dump_json(value, file)
+        try:
+            os.replace(temporary, path)
+        except OSError as exc:
+            if exc.errno != errno.EBUSY:
+                raise
+            _write_over(path, value)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def _write_over(path: Path, value: dict[str, Any]) -> None:
+    """Write over a file Docker mounted by itself, which cannot be replaced."""
+    with path.open("r+", encoding="utf-8") as file:
+        dump_json(value, file)
+        file.truncate()
+
+
+def dump_json(value: dict[str, Any], file: Any) -> None:
+    """Write `value` to an open file, and make sure that it reaches the disk."""
+    json.dump(value, file, indent=2, ensure_ascii=False)
+    file.write("\n")
+    file.flush()
+    os.fsync(file.fileno())

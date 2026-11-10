@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 import re
 import shutil
@@ -24,6 +25,7 @@ from helpers import (
 
 from texdrop import logs
 from texdrop.__main__ import SHUTDOWN_SECONDS
+from texdrop.app import create_app
 from texdrop.archive import SUPPORTED
 
 TIME = r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d [+-]\d{4}"
@@ -75,6 +77,31 @@ def test_failed_requests_say_why(app, client, caplog):
         f"testclient alice POST /api/inspect 400 N ms: unsupported file type: upload a {SUPPORTED} archive",
         "testclient - POST /api/jobs 411 N ms: Content-Length required",
     ]
+
+
+def test_the_client_comes_from_x_forwarded_for_of_trusted_proxies_only(settings, fake_compiler, caplog):
+    caplog.set_level(logging.INFO)
+    forwarded = {"X-Forwarded-For": "203.0.113.7"}
+    TestClient(create_app(settings, fake_compiler)).get("/api/jobs", headers=forwarded)  # refused, so logged
+    TestClient(create_app(dataclasses.replace(settings, forwarded_allow_ips="*"), fake_compiler)).get("/api/jobs", headers=forwarded)
+    assert access_lines(caplog) == [
+        "testclient - GET /api/jobs 401 N ms: missing or invalid token",  # by default, the header of a client is ignored
+        "203.0.113.7 - GET /api/jobs 401 N ms: missing or invalid token",
+    ]
+
+
+def test_tokens_in_the_url_are_hidden(app, caplog):
+    # Refused (TeXdrop takes tokens only in the Authorization header), but never logged either.
+    caplog.set_level(logging.INFO)
+    anonymous = TestClient(app)
+    assert anonymous.get(f"/api/jobs?page=1&token={TOKENS['alice']}").status_code == 401
+    assert anonymous.get(f"/api/jobs?%74oken={TOKENS['bob']}&TOKEN={TOKENS['alice']}").status_code == 401
+    assert access_lines(caplog) == [
+        "testclient - GET /api/jobs?page=1&token=*** 401 N ms: missing or invalid token",
+        "testclient - GET /api/jobs?%74oken=***&TOKEN=*** 401 N ms: missing or invalid token",
+    ]
+    server = "\n".join(record.getMessage() for record in caplog.records if record.name.startswith("texdrop"))
+    assert TOKENS["alice"] not in server and TOKENS["bob"] not in server  # the test client logs its URLs itself
 
 
 def test_unexpected_errors_are_logged_as_errors(app, client, monkeypatch, caplog):
@@ -209,9 +236,9 @@ def test_log_times_are_in_the_tz_time_zone(data):
 
 
 def test_startup_errors_reach_the_log_file(data):
-    (data / "config.json").write_text('{"users": {"Bad Name": "0123456789abcdef"}}')
+    (data / "users.json").write_text('{"users": {"Bad Name": "0123456789abcdef"}}')
     assert failed_start(data).endswith(
-        f"ERROR   cannot start: {data / 'config.json'}: invalid user name 'Bad Name': use 1-32 of a-z, 0-9, '_' and '-'"
+        f"ERROR   cannot start: {data / 'users.json'}: invalid user name 'Bad Name': use 1-32 of a-z, 0-9, '_' and '-'"
     )
     assert failed_start(data, COMPILE_TIMEOUT_MINUTES="soon").endswith(
         "ERROR   cannot start: COMPILE_TIMEOUT_MINUTES must be an integer, got 'soon'"

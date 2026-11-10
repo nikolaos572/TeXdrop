@@ -1,5 +1,9 @@
+import re
+
 from fastapi.testclient import TestClient
-from helpers import TOKENS
+from helpers import TOKENS, login, write_json
+
+from texdrop.app import create_app
 
 
 def test_first_visit_shows_the_login_page(app):
@@ -15,7 +19,7 @@ def test_login_sets_a_30_day_http_only_cookie(app):
     response = browser.post("/api/session", json={"token": TOKENS["bob"]})
     assert response.json() == {"user": "bob"}
     cookie = response.headers["set-cookie"]
-    assert cookie.startswith(f"latex_token={TOKENS['bob']};")
+    assert re.match(r"texdrop_session=[A-Za-z0-9_-]{43};", cookie)  # a session of 256 random bits, not the token
     for attribute in ("HttpOnly", "Max-Age=2592000", "Path=/", "SameSite=strict"):
         assert attribute in cookie
     assert "Secure" not in cookie  # plain HTTP; set when served over HTTPS
@@ -66,7 +70,7 @@ def test_pages_choose_their_theme_before_painting(app):
 
 
 def test_the_job_list_has_a_place_for_errors_over_the_page(app):
-    page = TestClient(app, cookies={"latex_token": TOKENS["alice"]}).get("/").text
+    page = TestClient(app, cookies={"texdrop_session": login(app)}).get("/").text
     assert '<pre id="error-tooltip" class="error-tooltip" role="tooltip" hidden></pre>' in page
 
 
@@ -90,8 +94,10 @@ def test_invalid_login_bodies(app):
 
 
 def test_stale_cookie_shows_the_login_page(app):
-    browser = TestClient(app, cookies={"latex_token": "revoked-token-0123456789"})
+    browser = TestClient(app, cookies={"texdrop_session": "ended-session-0123456789"})
     assert 'id="login-form"' in browser.get("/").text
+    # The cookie holds a session: a token there is no session.
+    assert 'id="login-form"' in TestClient(app, cookies={"texdrop_session": TOKENS["alice"]}).get("/").text
 
 
 def test_logout_clears_the_cookie(app):
@@ -99,8 +105,43 @@ def test_logout_clears_the_cookie(app):
     browser.post("/api/session", json={"token": TOKENS["alice"]})
     response = browser.delete("/api/session")
     assert response.status_code == 204
-    assert 'latex_token=""' in response.headers["set-cookie"]
+    assert 'texdrop_session=""' in response.headers["set-cookie"]
     assert 'id="login-form"' in browser.get("/").text
+    assert browser.get("/api/session").status_code == 401
+
+
+def test_logout_ends_the_session_also_for_a_copy_of_the_cookie(app, client):
+    browser = TestClient(app)
+    copied = {"Cookie": f"texdrop_session={login(app)}"}
+    other = {"Cookie": f"texdrop_session={login(app)}"}  # the same user, in another browser
+    assert 'id="dropzone"' in browser.get("/", headers=copied).text
+    assert browser.delete("/api/session", headers=copied).status_code == 204
+    assert 'id="login-form"' in browser.get("/", headers=copied).text
+    response = browser.get("/api/jobs", headers=copied)
+    assert (response.status_code, response.json()) == (401, {"detail": "the session ended or expired: log in again"})
+    assert 'id="dropzone"' in browser.get("/", headers=other).text
+    assert client.get("/api/session").json() == {"user": "alice"}  # the token itself still works
+
+
+def test_a_new_token_ends_the_users_sessions(app, settings):
+    alice, bob = login(app, "alice"), login(app, "bob")
+    write_json(settings.users_file, {"users": {"alice": "alice-new-token-0123456789", "bob": TOKENS["bob"]}})
+    assert TestClient(app, cookies={"texdrop_session": alice}).get("/api/session").status_code == 401
+    assert TestClient(app, cookies={"texdrop_session": bob}).get("/api/session").json() == {"user": "bob"}
+
+
+def test_removing_a_user_ends_their_sessions(app, settings):
+    browser = TestClient(app, cookies={"texdrop_session": login(app)})
+    write_json(settings.users_file, {"users": {"bob": TOKENS["bob"]}})
+    assert 'id="login-form"' in browser.get("/").text
+    write_json(settings.users_file, {"users": TOKENS})  # back with the same token: the session was not ended
+    assert 'id="dropzone"' in browser.get("/").text
+
+
+def test_sessions_survive_a_restart(app, settings, fake_compiler):
+    alice = login(app)
+    restarted = TestClient(create_app(settings, fake_compiler), cookies={"texdrop_session": alice})
+    assert restarted.get("/api/session").json() == {"user": "alice"}
 
 
 def test_static_assets_are_served(app):

@@ -3,7 +3,8 @@ import os
 
 import pytest
 
-from texdrop.users import ConfigError, UserRegistry, parse_users
+from texdrop.errors import ConfigError
+from texdrop.users import UserRegistry, parse_users
 
 GOOD_TOKEN = "0123456789abcdef"
 
@@ -38,7 +39,7 @@ def _write(path, users):
 
 
 def test_authenticate(tmp_path):
-    path = tmp_path / "config.json"
+    path = tmp_path / "users.json"
     _write(path, {"alice": GOOD_TOKEN})
     registry = UserRegistry(path)
     assert registry.authenticate(GOOD_TOKEN) == "alice"
@@ -52,14 +53,14 @@ def test_missing_file_means_no_users(tmp_path):
 
 
 def test_invalid_file_at_startup_is_an_error(tmp_path):
-    path = tmp_path / "config.json"
+    path = tmp_path / "users.json"
     path.write_text("{not json")
     with pytest.raises(ConfigError):
         UserRegistry(path)
 
 
 def test_changes_are_picked_up_without_restart(tmp_path):
-    path = tmp_path / "config.json"
+    path = tmp_path / "users.json"
     _write(path, {"alice": GOOD_TOKEN})
     registry = UserRegistry(path)
 
@@ -73,7 +74,7 @@ def test_changes_are_picked_up_without_restart(tmp_path):
 
 
 def test_exists_follows_the_file(tmp_path):
-    path = tmp_path / "config.json"
+    path = tmp_path / "users.json"
     _write(path, {"alice": GOOD_TOKEN})
     registry = UserRegistry(path)
     assert (registry.exists("alice"), registry.exists("bob")) == (True, False)
@@ -83,7 +84,7 @@ def test_exists_follows_the_file(tmp_path):
 
 
 def test_broken_edit_keeps_previous_users(tmp_path):
-    path = tmp_path / "config.json"
+    path = tmp_path / "users.json"
     _write(path, {"alice": GOOD_TOKEN})
     registry = UserRegistry(path)
     path.write_text('{"users": {"alice": "short"}}')

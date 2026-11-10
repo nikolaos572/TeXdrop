@@ -208,7 +208,7 @@ def test_missing_protections():
     if os.geteuid() == 0 or not os.path.isdir("/proc/self"):
         pytest.skip("needs an unprivileged user and /proc")
     assert sandbox.missing_protections(6, True) == []
-    assert "config.json" in sandbox.missing_protections(0, True)[0]
+    assert "users.json" in sandbox.missing_protections(0, True)[0]
     assert len(sandbox.missing_protections(5, True)) == 1  # signals and abstract sockets
     old = " ".join(sandbox.missing_protections(2, False))
     assert "truncate" in old and "signals" in old and "TCP and UDP" in old
