@@ -4,7 +4,7 @@ TeXdrop is a FastAPI service with a web page that compiles uploaded LaTeX
 archives to PDF, one job at a time, in a sandbox (Landlock and seccomp). Python 3.11+,
 SQLite for the job queue, no frontend build step.
 
-- `src/texdrop/`: one module per concern, each starting with a docstring that says what
+- `app/`: one module per concern, each starting with a docstring that says what
   it does; `static/` is the web page (plain HTML, CSS and JavaScript).
 - `tests/`: pytest; `test_docker.py` builds the image and tests the container.
 - `docs/`: deployment, configuration (every environment variable), API, security, development.
