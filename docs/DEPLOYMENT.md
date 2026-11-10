@@ -81,11 +81,13 @@ docker run --rm --user 0 -v "$PWD/data:/data" texdrop chown -R 61001:61001 /data
 `docker run` and compose are equivalent: `compose.yaml` only writes down the same options,
 and every setting is an environment variable, which `-e` sets as well. Safety does not
 depend on extra options either: the image has its own init process (tini), which passes
-`docker stop` on to the server and reaps processes left behind in the container, and the
-server makes itself and everything it starts unable to gain privileges. `--init` (which adds
-the same init process), `--cap-drop ALL` and `--security-opt no-new-privileges` are therefore
-not needed; they do no harm, and the last two add a second layer at no cost. Only the command
-line (or `compose.yaml`) can give the port, the data
+`docker stop` on to the server and reaps processes left behind in the container, the server
+runs as an unprivileged user and needs no capabilities, and it makes itself and everything it
+starts unable to gain privileges. `--init` (which adds the same init process), `--cap-drop ALL`
+and `--security-opt no-new-privileges` are therefore not needed, and they do no harm. The last
+two add a second layer at no cost, as in the commands of these docs and in `compose.yaml`:
+they also cover the commands you start with `docker exec`, which the server's own setting
+does not reach. Only the command line (or `compose.yaml`) can give the port, the data
 directory, the restart policy (without `--restart`, the container stays stopped after a
 reboot) and the [container's limits](#container-limits).
 
@@ -96,7 +98,7 @@ running compilation, which starts again from the beginning at the next start, an
 requests still open after 5 seconds, such as a client waiting for a job with `?wait=`.
 
 Use HTTPS (a reverse proxy in front of the service) when it is reachable beyond a trusted
-network, and tell the server about the proxy with `FORWARDED_ALLOW_IPS` (see
+network; it works without settings, and better with `PUBLIC_BASE_URL` (see
 [Reverse proxies](#reverse-proxies)).
 
 To let AI agents such as Claude Code use the service, add `-e ENABLE_MCP=1`: see
@@ -137,26 +139,31 @@ data/
 
 ## Reverse proxies
 
-Put TeXdrop behind a reverse proxy (nginx, Caddy, Traefik, ...) for HTTPS. Four things
-matter:
+TeXdrop works behind a reverse proxy (nginx, Caddy, Traefik, Nginx Proxy Manager, ...) as it
+is: nothing has to be set. The proxy has to send the usual headers, which Caddy, Traefik and
+Nginx Proxy Manager do by themselves and plain nginx does with the `proxy_set_header` lines of
+the example below. Four things matter:
 
 - **The address.** Set `PUBLIC_BASE_URL` to the address users reach, such as
-  `https://texdrop.example.com`, so that the MCP server's transfer links point there,
-  whatever the proxy sends as `Host`, and so that browsers may send changes (a login, an
-  upload) only from pages at exactly that address. Without it, they may from pages of the
-  host the request was sent to, which the proxy must then pass on (nginx:
-  `proxy_set_header Host $host;`). TeXdrop must be served at the root of its address (a
-  domain or subdomain of its own): the web page uses paths such as `/api/jobs`, so it cannot
-  live under a path like `https://example.com/texdrop/`, and a `PUBLIC_BASE_URL` with a path
-  stops the server at startup.
+  `https://texdrop.example.com`. It is not required, but recommended: the MCP server's
+  transfer links then point there, whatever the proxy sends, the web page's cookie is marked
+  `Secure`, and browsers may send changes (a login, an upload) only from pages at exactly that
+  address, so that no other site can forge them. Without it, the links follow each request's
+  `Host` and scheme. TeXdrop must be served at the root of its address (a domain or subdomain
+  of its own): the web page uses paths such as `/api/jobs`, so it cannot live under a path
+  like `https://example.com/texdrop/`, and a `PUBLIC_BASE_URL` with a path stops the server
+  at startup.
 - **The client's address.** It is logged, and binds the MCP server's transfer links to the
-  agent's computer. TeXdrop takes it from the proxy's `X-Forwarded-For` header only in
-  requests from the proxies that `FORWARDED_ALLOW_IPS` names, and from the connection
-  otherwise. The default, `127.0.0.1`, names a proxy on the same machine when TeXdrop runs
-  without Docker. A container sees its proxy at another address, so until you name the
-  proxy, every request seems to come from it: the log shows the proxy's address on every
-  line, and transfer links work for any client of the proxy. Set `FORWARDED_ALLOW_IPS` to
-  that address:
+  agent's computer. By default (`FORWARDED_ALLOW_IPS=*`) any peer may be
+  a proxy: the client's address is the first address of the proxy's `X-Forwarded-For`
+  header, else Cloudflare's `CF-Connecting-IP`, else the connection's. Have the proxy set
+  `X-Forwarded-For` to the client's address rather than add to one the client sent (nginx:
+  `$remote_addr`, not `$proxy_add_x_forwarded_for`), since the first address is the one used.
+
+  The catch: anyone who can reach TeXdrop's port without the proxy can claim any address
+  this way. Publish the port only to the proxy (`-p 127.0.0.1:8000:8000`, or no `-p` with the
+  proxy on the same Docker network), or name the proxy in `FORWARDED_ALLOW_IPS`, as the
+  container sees it:
   - for a proxy on the same machine that forwards to the published port, usually
     `172.17.0.1`, the gateway of Docker's default network;
   - for a proxy in a container on the same Docker network, that network's subnet, such as
@@ -164,21 +171,14 @@ matter:
     own address can change.
 
   uvicorn then takes the last address of `X-Forwarded-For` that is not one of the proxies,
-  and ignores the headers of every other client, so that no one can claim another address.
-  Separate several proxies or networks with commas; an entry that is not an IP address or
-  network stops the server at startup instead of being ignored, and the startup log says
-  whose `X-Forwarded-For` is used.
-
-  `*` trusts every peer instead: the client's address is then the first address in
-  `X-Forwarded-For`, else Cloudflare's `CF-Connecting-IP` header, else the connection's.
-  Anyone who can reach TeXdrop's port directly can then claim any address, so use it only
-  when the port can be reached only through the proxy (`-p 127.0.0.1:8000:8000`, or no `-p`
-  with the proxy on the same Docker network), and have the proxy set `X-Forwarded-For` to the
-  client's address rather than add to the one the client sent (nginx: `$remote_addr`, not
-  `$proxy_add_x_forwarded_for`), since the first address of the list is the one used.
-- **The scheme.** The proxies of `FORWARDED_ALLOW_IPS` are also trusted for
-  `X-Forwarded-Proto`: the server then knows that the client used HTTPS, marks the web
-  page's cookie `Secure`, and, without `PUBLIC_BASE_URL`, hands out `https://` transfer
+  and ignores the headers of every other peer, `CF-Connecting-IP` included, so that no one
+  can claim another address. Separate several proxies or networks with commas; an entry that
+  is not an IP address or network stops the server at startup instead of being ignored, and
+  the startup log says whose `X-Forwarded-For` is used. A wrong address makes every request
+  seem to come from the proxy: the log then shows the proxy's address on every line.
+- **The scheme.** The proxies that `FORWARDED_ALLOW_IPS` trusts (by default any peer) are also
+  trusted for `X-Forwarded-Proto`: the server then knows that the client used HTTPS, marks the
+  web page's cookie `Secure`, and, without `PUBLIC_BASE_URL`, hands out `https://` transfer
   links.
 - **Timeouts and sizes.** A request waiting for a job (`?wait=`) stays open until the job
   finishes; keep `wait` below the proxy's timeout (nginx: 60 seconds by default), as the MCP
@@ -270,7 +270,7 @@ Each line has the time (in the `TZ` time zone), the level and one event:
   a file: the client's address, the user (`-` when unknown), the request, its status and
   duration, and why it failed. Successful reads are not logged: the web page repeats them
   every few seconds, and Docker its health check every 30 seconds. Behind a reverse proxy,
-  the address is the proxy's until `FORWARDED_ALLOW_IPS` names it (see
+  the address comes from the proxy's `X-Forwarded-For` (see
   [Reverse proxies](#reverse-proxies)).
 - One line per finished job, with the first line of the error when it failed (the job's log
   has the rest).

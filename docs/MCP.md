@@ -192,11 +192,12 @@ matters is what matters for the rest of the service (see
 [DEPLOYMENT.md](DEPLOYMENT.md#reverse-proxies)):
 
 - **`PUBLIC_BASE_URL`** should be the address agents connect to, such as
-  `https://texdrop.example.com`, so that the links' URLs start with it.
-- **The client's address** binds the links. **`FORWARDED_ALLOW_IPS` must name the proxy**,
-  as the container sees it (often `172.17.0.1`), so that TeXdrop takes each client's address
-  from the proxy's `X-Forwarded-For`. Until then, every request seems to come from the proxy,
-  and links would work for any client of the proxy.
+  `https://texdrop.example.com`, so that the links' URLs start with it whatever the proxy
+  sends.
+- **The client's address** binds the links: TeXdrop takes it from the proxy's
+  `X-Forwarded-For`, from any peer by default (`FORWARDED_ALLOW_IPS=*`). Publish TeXdrop's
+  port only to the proxy, or name the proxy in `FORWARDED_ALLOW_IPS`, so that no one who goes
+  around it can claim another address.
 - **Timeouts and sizes.** `get_job` answers within 50 seconds, below nginx's default limit
   of 60. Uploads through links are as large as the archives: raise the proxy's limit
   (`client_max_body_size` for nginx) if it is below `MAX_UPLOAD_MB`.
@@ -207,8 +208,9 @@ matters is what matters for the rest of the service (see
 - **The same token and the same rights.** The agent uses a user's token and can do what
   that user can do through the API, on all their jobs, including deleting them all; the
   delete tools are marked destructive so that agents ask first. The endpoint accepts the
-  token only in the `Authorization` header, never the web page's cookie, and refuses
-  (`403`) calls that a browser sends from a page of another site (its `Origin` header), so
+  token only in the `Authorization` header, never the web page's cookie, and, with
+  `PUBLIC_BASE_URL` set, refuses (`403`) calls that a browser sends from a page at another
+  address (its `Origin` header), so
   another web site cannot call it from your browser. An MCP client that runs in a web page,
   such as a browser-based inspector, is refused for the same reason: use one that runs
   outside the browser, as agents do.

@@ -440,8 +440,8 @@ def test_a_download_cut_off_leaves_the_link_valid(server, tmp_path):
 
 
 def test_behind_a_reverse_proxy_links_follow_the_forwarded_address(server, tmp_path):
-    # FORWARDED_ALLOW_IPS defaults to 127.0.0.1, so the server takes this test for a reverse proxy
-    # and the client's address from X-Forwarded-For, as it would from nginx.
+    # FORWARDED_ALLOW_IPS defaults to *, so the server takes this test for a reverse proxy and the
+    # client's address from X-Forwarded-For, as it would from nginx.
     archive = write_archive(tmp_path / "paper.zip", {"main.tex": MINIMAL_TEX})
 
     async def make_link(client):

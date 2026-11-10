@@ -1,3 +1,4 @@
+import dataclasses
 import re
 
 from fastapi.testclient import TestClient
@@ -76,6 +77,13 @@ def test_the_job_list_has_a_place_for_errors_over_the_page(app):
 
 def test_cookie_is_secure_over_https(app):
     response = TestClient(app, base_url="https://testserver").post("/api/session", json={"token": TOKENS["bob"]})
+    assert "Secure" in response.headers["set-cookie"]
+
+
+def test_cookie_is_secure_with_an_https_public_base_url(settings, fake_compiler):
+    # Behind a proxy that FORWARDED_ALLOW_IPS does not trust, the request seems to come over HTTP.
+    based = dataclasses.replace(settings, public_base_url="https://texdrop.example.com", forwarded_allow_ips="10.0.0.1")
+    response = TestClient(create_app(based, fake_compiler)).post("/api/session", json={"token": TOKENS["bob"]})
     assert "Secure" in response.headers["set-cookie"]
 
 

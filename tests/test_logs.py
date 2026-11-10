@@ -83,10 +83,11 @@ def test_the_client_comes_from_x_forwarded_for_of_trusted_proxies_only(settings,
     caplog.set_level(logging.INFO)
     forwarded = {"X-Forwarded-For": "203.0.113.7"}
     TestClient(create_app(settings, fake_compiler)).get("/api/jobs", headers=forwarded)  # refused, so logged
-    TestClient(create_app(dataclasses.replace(settings, forwarded_allow_ips="*"), fake_compiler)).get("/api/jobs", headers=forwarded)
+    named = dataclasses.replace(settings, forwarded_allow_ips="10.0.0.1")  # uvicorn reads the header of that proxy only
+    TestClient(create_app(named, fake_compiler)).get("/api/jobs", headers=forwarded)
     assert access_lines(caplog) == [
-        "testclient - GET /api/jobs 401 N ms: missing or invalid token",  # by default, the header of a client is ignored
-        "203.0.113.7 - GET /api/jobs 401 N ms: missing or invalid token",
+        "203.0.113.7 - GET /api/jobs 401 N ms: missing or invalid token",  # by default, any peer may be the proxy
+        "testclient - GET /api/jobs 401 N ms: missing or invalid token",
     ]
 
 
