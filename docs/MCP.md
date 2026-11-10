@@ -1,6 +1,6 @@
 # MCP server
 
-AI agents such as Claude Code or Antigravity (`agy`) can use TeXdrop by themselves: with
+AI agents such as Claude Code, Codex or Antigravity (`agy`) can use TeXdrop by themselves: with
 the MCP server on, an agent connects to `https://<your server>/mcp` with a user's token,
 finds the operations TeXdrop offers, and compiles projects, follows their jobs and
 downloads the PDFs and logs. It works with the same jobs as the web page and the API: a job
@@ -33,7 +33,7 @@ docker run -d --name texdrop -p 8000:8000 -v "$PWD/data:/data" \
 (or `ENABLE_MCP: "1"` under `environment:` in `compose.yaml`, or `ENABLE_MCP=1` in the
 environment of `python -m texdrop`). The server then logs `MCP server at /mcp, transfer
 links valid for 60 minute(s)` at startup, and **Server Info** on the web page shows the
-address to give to agents, such as `https://texdrop.example.lan/mcp`.
+address to give to agents, such as `https://texdrop.example.com/mcp`.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -46,14 +46,18 @@ An agent needs the server's address with `/mcp` at the end, and a user's token, 
 sends in the `Authorization` header. It also needs to run shell commands, to pack the
 project into an archive and to run the `curl` commands the tools give it.
 
+```bash
+export TEXDROP_TOKEN='<your token>'
+```
+
 **Claude Code**: add the server once, for all your projects:
 
 ```bash
-claude mcp add --transport http --scope user texdrop https://texdrop.example.lan/mcp \
-  --header "Authorization: Bearer <your token>"
+claude mcp add --transport http --scope user texdrop https://texdrop.example.com/mcp \
+  --header "Authorization: Bearer $TEXDROP_TOKEN"
 ```
 
-or, for one project, in its `.mcp.json`, with the token taken from an environment variable
+or, for one project, in its `.mcp.json`, with the token taken from the environment variable
 (so that the file can be shared without it):
 
 ```json
@@ -61,17 +65,23 @@ or, for one project, in its `.mcp.json`, with the token taken from an environmen
   "mcpServers": {
     "texdrop": {
       "type": "http",
-      "url": "https://texdrop.example.lan/mcp",
+      "url": "https://texdrop.example.com/mcp",
       "headers": {"Authorization": "Bearer ${TEXDROP_TOKEN}"}
     }
   }
 }
 ```
 
+**Codex CLI**, which reads `TEXDROP_TOKEN` from its environment when it starts:
+
+```bash
+codex mcp add texdrop --url https://texdrop.example.com/mcp --bearer-token-env-var TEXDROP_TOKEN
+```
+
 **Antigravity** (`agy`), whose flags come before the name:
 
 ```bash
-agy mcp add --header "Authorization: Bearer <your token>" texdrop https://texdrop.example.lan/mcp
+agy mcp add --header "Authorization: Bearer $TEXDROP_TOKEN" texdrop https://texdrop.example.com/mcp
 ```
 
 which writes the server into `~/.gemini/config/mcp_config.json`:
@@ -82,19 +92,24 @@ which writes the server into `~/.gemini/config/mcp_config.json`:
     "texdrop": {
       "disabled": false,
       "headers": {"Authorization": "Bearer <your token>"},
-      "serverUrl": "https://texdrop.example.lan/mcp"
+      "serverUrl": "https://texdrop.example.com/mcp"
     }
   }
 }
 ```
 
-`claude mcp list` checks the connection (`texdrop: ... - ✔ Connected`), and `/mcp` in a
-session of either agent shows the server and its tools. Other agents work the same way if
-they support MCP's Streamable HTTP transport with a custom header; the server needs no
-OAuth.
+Replace `texdrop.example.com` with your server's address (`localhost:8000` when the agent
+runs on the same machine). `claude mcp list` checks the connection
+(`texdrop: ... - ✔ Connected`), and `/mcp` in a session of an agent shows the server and its
+tools. Other agents work the same way if they support MCP's Streamable HTTP transport with a
+custom header; the server needs no OAuth.
 
-Then ask the agent, for example, *"Compile the paper in this folder with TeXdrop and fix
-the errors"*.
+Then ask the agent, for example:
+
+- *"Compile the paper in this folder with TeXdrop and fix the errors."*
+- *"Use TeXdrop to compile the LaTeX project in `~/papers/thesis.zip` and save the PDF as
+  `~/Documents/pdfs/thesis.pdf` (create the directory if needed). If it fails, show me the
+  TeX errors."*
 
 ## How an agent compiles a project
 
@@ -104,12 +119,12 @@ instructions from you:
 1. The agent packs the project's folder into a `.zip` (or `.tar.gz`, `.tar.bz2`, `.tar.xz`,
    `.tar` or `.7z`) archive.
 2. It calls `upload_link` and runs the command it returns, such as
-   `curl -sS --fail-with-body -F file=@paper.zip https://texdrop.example.lan/api/links/kV3...`,
+   `curl -sS --fail-with-body -F file=@paper.zip https://texdrop.example.com/api/links/kV3...`,
    which prints the new job, with its id.
 3. It calls `get_job` until the job is `done` or `failed`. A failed job's `error` has the
    first lines of TeX's errors, which is usually enough to fix the document.
 4. It calls `download_link` for the PDF (or the full log) and runs the command it returns,
-   such as `curl -sS --fail-with-body -o main.pdf https://texdrop.example.lan/api/links/Qe9...`.
+   such as `curl -sS --fail-with-body -o main.pdf https://texdrop.example.com/api/links/Qe9...`.
 
 ## Tools
 

@@ -5,7 +5,7 @@ How to build and run the service. The users and the settings are described in
 
 ## Requirements
 
-- Linux, with or without Docker. The Docker image takes about 9 GB (the full TeX Live).
+- Linux, with or without Docker. The Docker image takes about 6 GB (the full TeX Live).
 - For the full sandbox: Linux 6.12 or newer, on x86-64 or ARM64, with Landlock enabled
   (`cat /sys/kernel/security/lsm` must list `landlock`). Elsewhere the server names what is
   missing and starts only with `ALLOW_UNSANDBOXED=1` (see
@@ -29,45 +29,63 @@ the locale) get none, and their documents compile without it.
 
 ## Running
 
-The container runs as uid and gid 61001, which must own the data directory (no user or group
-with that number needs to exist on the host):
-
 ```bash
-mkdir data
-sudo chown -R 61001:61001 data
-
-docker run -d --name texdrop -p 8000:8000 -v "$PWD/data:/data" \
-  -e TZ=Europe/Athens -e AUTO_DELETE_DAYS=15 \
-  --cap-drop ALL --security-opt no-new-privileges --restart unless-stopped \
+docker run -d --name texdrop \
+  --restart unless-stopped \
+  --cap-drop ALL --security-opt no-new-privileges \
+  -p 8000:8000 \
+  -e TZ=Europe/Athens \
+  -e AUTO_DELETE_DAYS=15 \
+  -v texdrop-data:/data \
   texdrop
 
 docker exec texdrop python -m texdrop adduser alice    # prints alice's token
 ```
 
-or `docker compose up -d` with [`compose.yaml`](../compose.yaml), and the same command with
-`docker compose exec texdrop` instead of `docker exec texdrop`. Until a user exists, the
-server refuses every request; [CONFIGURATION.md](CONFIGURATION.md#users) has more on the
-users. Everything the service stores is in the data directory, so the container can be
-removed and started again from a new image (`docker rm -f texdrop`, then the same
-`docker run`) without losing anything.
+Until a user exists, the server refuses every request; [CONFIGURATION.md](CONFIGURATION.md#users)
+has more on the users. Everything the service stores is in its data directory, the volume
+mounted at `/data`, so the container can be removed and started again from a new image
+(`docker rm -f texdrop`, then the same `docker run`) without losing anything. Mount it at
+`/data` and nowhere else: a volume mounted at another path stays empty, and the data ends up
+in an anonymous volume that a new container does not reuse.
 
-Images before November 2026 ran as uid 1001: when you upgrade from one, give the data
-directory to 61001 once (the same `sudo chown -R 61001:61001 data`) before you start the new
-container. With rootless Docker or `userns-remap`, the host sees the container's ids shifted,
-so a `chown` on the host gives the wrong owner; give the directory to 61001 from inside a
-container instead:
+### A directory on the host
+
+The command above keeps the data in the named volume `texdrop-data`, which Docker creates and
+gives to the container's user on first use (as root, `docker volume inspect -f
+'{{.Mountpoint}}' texdrop-data` shows where it is). To keep the data in a directory of your
+choice instead, which the rest of these docs call `data/`, give it to the container's user
+first: uid and gid **61001**, a number that matches no account of the host (no user or group
+with that number needs to exist). Otherwise Docker creates the directory owned by root, and
+the server cannot write to it.
+
+```bash
+mkdir data
+sudo chown -R 61001:61001 data
+docker run ... -v "$PWD/data:/data" ... texdrop
+```
+
+[`compose.yaml`](../compose.yaml) does this: `docker compose up -d`, then the same command
+with `docker compose exec texdrop` instead of `docker exec texdrop`. Images before November
+2026 ran as uid 1001: when you upgrade from one, give the data directory to 61001 once, with
+the same `sudo chown -R`, before you start the new container. With rootless Docker or
+`userns-remap`, the host sees the container's ids shifted, so a `chown` on the host gives the
+wrong owner; give the directory to 61001 from inside a container instead:
 
 ```bash
 docker run --rm --user 0 -v "$PWD/data:/data" texdrop chown -R 61001:61001 /data
 ```
 
+### Options
+
 `docker run` and compose are equivalent: `compose.yaml` only writes down the same options,
 and every setting is an environment variable, which `-e` sets as well. Safety does not
 depend on extra options either: the image has its own init process (tini), which passes
 `docker stop` on to the server and reaps processes left behind in the container, and the
-server makes itself and everything it starts unable to gain privileges. `--init`, `--cap-drop ALL` and
-`--security-opt no-new-privileges` are therefore not needed; the last two add a second
-layer at no cost. Only the command line (or `compose.yaml`) can give the port, the data
+server makes itself and everything it starts unable to gain privileges. `--init` (which adds
+the same init process), `--cap-drop ALL` and `--security-opt no-new-privileges` are therefore
+not needed; they do no harm, and the last two add a second layer at no cost. Only the command
+line (or `compose.yaml`) can give the port, the data
 directory, the restart policy (without `--restart`, the container stays stopped after a
 reboot) and the [container's limits](#container-limits).
 

@@ -1,123 +1,76 @@
 # TeXdrop
 
-A small web service that compiles LaTeX projects. Upload a `.zip`, `.7z`, `.tar`,
+Compile LaTeX projects to PDF, for AI agents and for people. Upload a `.zip`, `.7z`, `.tar`,
 `.tar.gz`, `.tar.bz2` or `.tar.xz` archive of a project (with its BibTeX/biblatex
-bibliography) and get back the PDF and the compilation log. It is meant to be used
-through its HTTP API, and also has a simple web page.
+bibliography) and get back the PDF and the compilation log.
 
 ![The web page: an archive ready to compile, and the job list](docs/screenshot.png)
 
-- **Full TeX Live** (every package, as on Overleaf), compiled with `latexmk` using
-  pdfLaTeX (default), XeLaTeX or LuaLaTeX; BibTeX or Biber run automatically. Like
-  Overleaf, Ghostscript is there (EPS figures) and Java is not.
-- **Main file detection**: the only `.tex` file at the top of the project, or the only
-  one there with a `\documentclass`. Otherwise you name it.
-- **Queue**: jobs from all users run one at a time, strictly in submission order. The
-  web server stays responsive during compilations.
-- **Per-user tokens and storage**, a job list with status and queue position, downloads
-  of the original archive, PDF and log, and deletion of one or all jobs.
+- **Full TeX Live** (every package, as on Overleaf), compiled with `latexmk` using pdfLaTeX
+  (default), XeLaTeX or LuaLaTeX; BibTeX or Biber run automatically. Like Overleaf,
+  Ghostscript is there (EPS figures) and Java is not.
+- **Main file detection**: the only `.tex` file at the top of the project, or the only one
+  there with a `\documentclass`. Otherwise you name it.
+- **Queue**: jobs from all users run one at a time, strictly in submission order, while the
+  web server stays responsive.
+- **Per-user tokens and storage**, a job list with status and queue position, downloads of
+  the archive, PDF and log, and deletion of one or all jobs.
 - **Sandboxed compilation**: documents cannot read other users' files or the tokens, and
   cannot use the network.
-- **MCP server for AI agents** (optional): Claude Code, Antigravity and other agents connect
-  with a token, find TeXdrop's tools, and compile projects, read the errors and download
-  the PDFs by themselves.
+- **A web page** to drop an archive, pick the main file and the engine, and follow the job
+  list (point at the **?** of a failed job to see its errors), with the server's settings and
+  a light or dark theme.
+- **An HTTP API** for programs, and an **MCP server** through which AI agents such as Claude
+  Code, Codex and Antigravity compile projects, read the errors and download the PDFs by
+  themselves.
 
-## Running it
+Built with **Python, FastAPI and uvicorn** on the TeX Live image. SQLite keeps the job queue.
+
+## Run it
 
 ```bash
-docker build -t texdrop .                    # ~9 GB: the full TeX Live distribution
+docker build -t texdrop .                             # about 6 GB: the full TeX Live
 
-mkdir data
-sudo chown -R 61001:61001 data               # the container runs as uid 61001
-
-docker run -d --name texdrop -p 8000:8000 -v "$PWD/data:/data" \
-  -e TZ=Europe/Athens -e AUTO_DELETE_DAYS=15 \
-  --cap-drop ALL --security-opt no-new-privileges --restart unless-stopped \
+docker run -d --name texdrop \
+  --restart unless-stopped \
+  --cap-drop ALL --security-opt no-new-privileges \
+  -p 8000:8000 \
+  -e TZ=Europe/Athens \
+  -e AUTO_DELETE_DAYS=15 \
+  -v texdrop-data:/data \
   texdrop
 
-docker exec texdrop python -m texdrop adduser alice    # prints alice's token
+docker exec texdrop python -m texdrop adduser alice   # prints alice's token
 ```
 
-or `docker compose up -d` with [`compose.yaml`](compose.yaml), and the same command with
-`docker compose exec texdrop` instead of `docker exec texdrop`. Then open
-`http://localhost:8000` and log in with the token.
+Then open `http://your-host:8000` and log in with the token. `--restart unless-stopped`
+starts TeXdrop again after a crash or a reboot. Add users the same way, at any time;
+`python -m texdrop reset-token alice` gives alice a new token if theirs is lost or leaked.
+To let AI agents use TeXdrop, add `-e ENABLE_MCP=1` and connect them as
+[MCP.md](docs/MCP.md#connecting-an-agent) shows. For the full sandbox, the host needs
+Linux 6.12 or newer.
 
-Add more users the same way, at any time, without a restart. If a token is lost or leaked,
-`docker exec texdrop python -m texdrop reset-token alice` prints a new one, and the old one
-stops working at once, in the browser and in the user's scripts and agents alike. (See
-[the users](docs/CONFIGURATION.md#users), also for removing a user.) The commands keep the
-users in `data/users.json`, in the same format as
-[PixDrop](https://github.com/nikolaos572/PixDrop)'s (one file can serve both).
+> Mount the volume at **`/data`**: that is where TeXdrop keeps the users, the jobs and the
+> log. To keep them in a directory on the host instead, give it to **UID/GID 61001**, the
+> user TeXdrop runs as, first: `sudo chown 61001:61001 /your/dir`. See
+> [Deployment](docs/DEPLOYMENT.md#a-directory-on-the-host).
 
-Everything the service stores lives in the mounted directory, so the container can be
-removed or upgraded without losing data. The service also runs without Docker. For the full
-sandbox it needs Linux 6.12 or newer.
-
-## Using it
-
-**Web page**: drop an archive on the page. The detected main file is filled in, or you
-pick one of the archive's `.tex` files; then choose the engine and press **Compile**. The
-job list below shows each job's status (point at the **?** of a failed job to see its
-errors) and links to its PDF and log. **Server Info** shows
-the server's settings and limits. The buttons next to it choose a light or dark theme, or
-follow the browser's (Auto); the choice is remembered in the browser.
-
-**API**: send the token as `Authorization: Bearer <token>`.
-
-```bash
-curl -H "Authorization: Bearer $TOKEN" -F file=@paper.zip http://localhost:8000/api/jobs
-# {"id":42,"status":"queued","queue_position":1,...}
-curl -H "Authorization: Bearer $TOKEN" "http://localhost:8000/api/jobs/42?wait=600"   # waits until it is done
-curl -H "Authorization: Bearer $TOKEN" -o paper.pdf http://localhost:8000/api/jobs/42/pdf
-```
-
-The **[API documentation](docs/API.md)** describes every endpoint with its parameters,
-responses and errors, how jobs behave, and has complete examples for building a client.
-
-**AI agents (MCP)**: off by default; add `-e ENABLE_MCP=1` to the `docker run`
-command above and TeXdrop serves an [MCP](https://modelcontextprotocol.io) server at
-`/mcp`. Configure an agent with the server's address and a user's token, and it finds
-the tools itself: it packs the project, uploads the archive, follows the job, reads
-TeX's errors, and saves the PDF or the full log. It needs to run shell commands
-(`curl`); files travel through short-lived links that work only from the agent's
-address. Connect it once:
-
-```bash
-export TEXDROP_TOKEN='<your token>'
-
-# Claude Code, for all projects
-claude mcp add --transport http --scope user texdrop http://localhost:8000/mcp \
-  --header "Authorization: Bearer $TEXDROP_TOKEN"
-
-# Codex CLI (it reads TEXDROP_TOKEN when it starts)
-codex mcp add texdrop --url http://localhost:8000/mcp \
-  --bearer-token-env-var TEXDROP_TOKEN
-
-# Antigravity (agy)
-agy mcp add --header "Authorization: Bearer $TEXDROP_TOKEN" texdrop http://localhost:8000/mcp
-```
-
-Replace `localhost:8000` with the server's address when the agent runs elsewhere.
-
-Then ask, for example: *"Use TeXdrop to compile the LaTeX project in
-`~/papers/thesis.zip` and save the PDF as `~/Documents/pdfs/thesis.pdf` (create the
-directory if needed). If it fails, show me the TeX errors."*
-
-**[MCP.md](docs/MCP.md)** has the tools, transfer links, reverse proxies and security.
+> Behind an HTTPS reverse proxy, also set `PUBLIC_BASE_URL` (such as
+> `https://texdrop.example.com`), the address users reach, and `FORWARDED_ALLOW_IPS`, your
+> proxy's address, so that the log shows each visitor's own: see
+> [Reverse proxies](docs/DEPLOYMENT.md#reverse-proxies).
 
 ## Documentation
 
-- [Deployment](docs/DEPLOYMENT.md): requirements, building, running with or without Docker,
-  the data directory, container limits, logs.
-- [Configuration](docs/CONFIGURATION.md): the users, the environment variables and their
-  defaults, fixed limits.
-- [API documentation](docs/API.md): every endpoint, its parameters, responses and errors,
-  how jobs behave, and examples in the shell and Python.
-- [MCP server](docs/MCP.md): connecting AI agents (Claude Code, Antigravity), the tools,
-  transfer links, reverse proxies and security.
+- [Deployment](docs/DEPLOYMENT.md): building, running with or without Docker, the data
+  directory, reverse proxies, container limits and logs.
+- [Configuration](docs/CONFIGURATION.md): the users, every environment variable, and the
+  fixed limits.
+- [API](docs/API.md): every endpoint, how jobs behave, and examples in the shell and Python.
+- [MCP server](docs/MCP.md): connecting AI agents, the tools and the transfer links.
 - [Security](docs/SECURITY.md): the sandbox and the other protections, older kernels, and
   how to report a vulnerability.
-- [Development](docs/DEVELOPMENT.md): how it works, and the tests.
+- [Development](docs/DEVELOPMENT.md): how it works, the tests, and updating the dependencies.
 
 ## License
 
