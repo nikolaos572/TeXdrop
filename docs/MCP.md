@@ -176,12 +176,12 @@ Caddy, Traefik, ...): its answers are plain JSON, without event streams or WebSo
 matters is what matters for the rest of the service (see
 [DEPLOYMENT.md](DEPLOYMENT.md#reverse-proxies)):
 
+- **`PUBLIC_BASE_URL`** should be the address agents connect to, such as
+  `https://texdrop.example.com`, so that the links' URLs start with it.
 - **The client's address** binds the links. **`FORWARDED_ALLOW_IPS` must name the proxy**,
   as the container sees it (often `172.17.0.1`), so that TeXdrop takes each client's address
-  from the proxy's `X-Forwarded-For`, and the scheme from `X-Forwarded-Proto`, which the
-  links' URLs use. Until then, every request seems to come from the proxy, so links would
-  work for any client of the proxy, and their URLs would start with `http://` while agents
-  connect with `https://`.
+  from the proxy's `X-Forwarded-For`. Until then, every request seems to come from the proxy,
+  and links would work for any client of the proxy.
 - **Timeouts and sizes.** `get_job` answers within 50 seconds, below nginx's default limit
   of 60. Uploads through links are as large as the archives: raise the proxy's limit
   (`client_max_body_size` for nginx) if it is below `MAX_UPLOAD_MB`.

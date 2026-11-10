@@ -13,6 +13,7 @@ services:
       - ./data:/data
     environment:
       TZ: UTC                    # time zone used to display dates, e.g. Europe/Athens
+      PUBLIC_BASE_URL: ""        # e.g. https://texdrop.example.com: the address users reach (docs/CONFIGURATION.md)
       AUTO_DELETE_DAYS: "0"      # delete jobs finished more than N days ago (0 = never)
       COMPILE_TIMEOUT_MINUTES: "15"
       MAX_UPLOAD_MB: "100"

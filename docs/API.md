@@ -163,7 +163,7 @@ on the text.
 | `206 Partial Content` | Part of a file, as asked with a `Range` header. |
 | `400 Bad Request` | The archive or the main file cannot be used, or the user's storage is full. `detail` says why. |
 | `401 Unauthorized` | No token, or a token the server does not know. |
-| `403 Forbidden` | A cookie-authenticated change without `X-Requested-With`. |
+| `403 Forbidden` | A cookie-authenticated change without `X-Requested-With`, or a change that a browser sent from a page of another site than this server (its `Origin` header): see [Security](SECURITY.md). |
 | `404 Not Found` | No such job (or a job of another user), or the file does not exist (yet). |
 | `405 Method Not Allowed` | The endpoint does not accept this method. |
 | `411 Length Required` | A `POST` without `Content-Length`. |

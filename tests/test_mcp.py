@@ -256,6 +256,14 @@ def test_wrong_kind_of_link(agent, make_archive):
     assert agent.curl.get(download["url"]).status_code == 200  # neither attempt used it
 
 
+def test_links_start_with_public_base_url(mcp_settings, fake_compiler):
+    app = create_app(dataclasses.replace(mcp_settings, public_base_url="https://texdrop.example.com"), fake_compiler)
+    with TestClient(app, headers=ALICE) as client:
+        link = Agent(client, TestClient(app)).call("upload_link")
+    assert link["url"].startswith("https://texdrop.example.com/api/links/")
+    assert link["command"].endswith(f" {link['url']}")
+
+
 def test_links_of_removed_users_stop_working(agent, mcp_settings, make_archive, caplog):
     caplog.set_level(logging.INFO)
     link = agent.call("upload_link")

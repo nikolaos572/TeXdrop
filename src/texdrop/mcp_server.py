@@ -207,7 +207,7 @@ def _new_link(request: Request, file: str, job_id: int | None = None, filename: 
     links: LinkService = request.app.state.links
     secret, expires_at = links.create(request.state.user, client, file, job_id)
     upload = file == UPLOAD
-    url = str(request.url_for("upload_through_link" if upload else "download_through_link", secret=secret))
+    url = f"{api.base_url(request)}/api/links/{secret}"
     if upload:
         command = f"curl -sS --fail-with-body -F file=@PROJECT.zip {shlex.quote(url)}"
     else:

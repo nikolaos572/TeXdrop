@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, nullcontext
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request, Response, status
 from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
@@ -21,7 +22,7 @@ from .jobs import JobService
 from .links import REFUSAL, LinkRefused, LinkService
 from .mcp_server import McpEndpoint
 from .sessions import Sessions
-from .settings import Settings, SettingsError
+from .settings import Settings, SettingsError, url_origin
 from .storage import Storage
 from .store import JobStore
 from .unpack import Unpacker
@@ -31,6 +32,7 @@ from .worker import Worker
 log = logging.getLogger(__name__)
 
 _BODY_METHODS = frozenset({"POST", "PUT", "PATCH"})
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 _MULTIPART_OVERHEAD = 1024**2  # room for form fields around the uploaded file
 
 
@@ -84,6 +86,8 @@ def create_app(settings: Settings | None = None, compiler: LatexCompiler | None 
             log.warning("running with reduced protection, as ALLOW_UNSANDBOXED=1 allows")
         else:
             log.info("every protection of the sandbox is active")
+        if settings.public_base_url:
+            log.info("URLs are given as %s/...", settings.public_base_url)
         proxies = "any peer" if settings.forwarded_allow_ips == "*" else settings.forwarded_allow_ips
         log.info("clients' addresses come from X-Forwarded-For in requests from %s (FORWARDED_ALLOW_IPS)", proxies)
         if mcp is not None:
@@ -137,15 +141,20 @@ def create_app(settings: Settings | None = None, compiler: LatexCompiler | None 
     @app.middleware("http")
     async def guard(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         # Refuse oversized bodies before reading them. The server never reads past
-        # Content-Length, so requiring the header bounds every upload.
-        if request.method in _BODY_METHODS:
-            length = request.headers.get("content-length", "")
+        # Content-Length, so requiring the header bounds every upload. Before that, changes
+        # that a browser sends from a page of another site are refused.
+        length = request.headers.get("content-length", "")
+        response: Response | None = None
+        if refusal := _foreign_origin(request, settings.public_base_url):
+            response = refuse(request, status.HTTP_403_FORBIDDEN, refusal)
+        elif request.method in _BODY_METHODS:
             if not length.isdigit():
-                return refuse(request, status.HTTP_411_LENGTH_REQUIRED, "Content-Length required")
-            if int(length) > max_body:
+                response = refuse(request, status.HTTP_411_LENGTH_REQUIRED, "Content-Length required")
+            elif int(length) > max_body:
                 limit = settings.max_upload_bytes // 1024**2
-                return refuse(request, status.HTTP_413_CONTENT_TOO_LARGE, f"the upload exceeds the {limit} MB limit")
-        response = await call_next(request)
+                response = refuse(request, status.HTTP_413_CONTENT_TOO_LARGE, f"the upload exceeds the {limit} MB limit")
+        if response is None:
+            response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -161,3 +170,28 @@ def create_app(settings: Settings | None = None, compiler: LatexCompiler | None 
     app.include_router(web.router)
     app.mount("/static", StaticFiles(directory=web.STATIC_DIR), name="static")
     return app
+
+
+def _foreign_origin(request: Request, public_base_url: str) -> str | None:
+    """Why the request is refused, if a browser sent it from a page that is not this server's.
+
+    Browsers send the page's origin in an Origin header with every POST, PUT, PATCH and DELETE.
+    It must be exactly PUBLIC_BASE_URL's scheme, host and port. Without PUBLIC_BASE_URL, its host
+    must be the one the request was sent to (the scheme and port the server sees may be a proxy's).
+    Another site is refused even when it is a sibling subdomain, which SameSite cookies take for
+    the same site. Requests without the header do not come from a browser (curl, agents), so no
+    other site can make them; they pass, and need a token."""
+    origin = request.headers.get("origin")
+    if request.method in _SAFE_METHODS or origin is None:
+        return None
+    if public_base_url:
+        expected = url_origin(public_base_url)
+        if url_origin(origin) == expected:
+            return None
+        return (
+            f"this server's address is {expected} (PUBLIC_BASE_URL), but the request came from a page at {origin}: "
+            f"open {expected}, or set PUBLIC_BASE_URL to the address you use"
+        )
+    if url_origin(origin) is not None and urlsplit(origin).hostname == request.url.hostname:
+        return None
+    return f"the request came from a page at {origin}, not from this server ({request.url.hostname})"

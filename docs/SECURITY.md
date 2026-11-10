@@ -55,6 +55,14 @@ disk as it is given. This page describes what keeps documents and users apart, a
   cookie is `HttpOnly`, `SameSite=Strict`, `Secure` over HTTPS, and changes made with it
   require a header that other sites cannot send. Pages are served with a strict Content
   Security Policy.
+- A `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` header is not this server's is refused
+  (`403`) before anything else happens, the token and the body included: with
+  `PUBLIC_BASE_URL`, the origin must be exactly its scheme, host and port; without it, its
+  host must be the one the request was sent to. That stops forged requests from every other
+  site, sibling subdomains such as `blog.example.com` included (`SameSite` cookies take those
+  for the same site), also to the MCP server and the transfer links. Browsers always send
+  `Origin` with these requests; requests without it (curl, scripts, agents) cannot be forged
+  by a web page, so they pass, and still need a token.
 - The [MCP server](MCP.md) for AI agents is off unless `ENABLE_MCP=1`. It accepts the
   token only in the `Authorization` header (not the cookie), and its tools run the API's
   code, with its checks. Files move through transfer links, whose URLs hold a 256-bit

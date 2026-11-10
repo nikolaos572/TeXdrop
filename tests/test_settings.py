@@ -19,6 +19,7 @@ def test_defaults():
     assert (settings.unpack_timeout_seconds, settings.unpack_memory_bytes) == (300, 4096 * 1024**2)
     assert (settings.enable_mcp, settings.link_expiry_seconds) == (False, 3600)  # off unless asked for
     assert settings.forwarded_allow_ips == "127.0.0.1"  # a proxy on this machine, so none in Docker
+    assert settings.public_base_url == ""  # the request's base URL
     assert (settings.host, settings.port) == ("0.0.0.0", 8000)
 
 
@@ -39,6 +40,7 @@ def test_values_from_environment():
             "ENABLE_MCP": "1",
             "LINK_EXPIRY_MINUTES": "15",
             "FORWARDED_ALLOW_IPS": "10.0.0.1",
+            "PUBLIC_BASE_URL": "https://texdrop.example.com/",
             "HOST": "127.0.0.1",
             "PORT": "8200",
         }
@@ -55,6 +57,7 @@ def test_values_from_environment():
     assert (settings.unpack_timeout_seconds, settings.unpack_memory_bytes) == (120, 0)
     assert (settings.enable_mcp, settings.link_expiry_seconds) == (True, 15 * 60)
     assert settings.forwarded_allow_ips == "10.0.0.1"
+    assert settings.public_base_url == "https://texdrop.example.com"  # without its trailing slash
     assert (settings.host, settings.port) == ("127.0.0.1", 8200)
 
 
@@ -100,6 +103,14 @@ def test_allow_unsandboxed_flag(value, expected):
         ("FORWARDED_ALLOW_IPS", "proxy.example.com", "got 'proxy.example.com'"),
         ("FORWARDED_ALLOW_IPS", "10.0.0.1,*", "or \\* alone, got '\\*'"),
         ("FORWARDED_ALLOW_IPS", "10.0.0.1,,10.0.0.2", "got ''"),
+        ("PUBLIC_BASE_URL", "texdrop.example.com", "PUBLIC_BASE_URL must look like"),
+        ("PUBLIC_BASE_URL", "ftp://texdrop.example.com", "PUBLIC_BASE_URL must look like"),
+        ("PUBLIC_BASE_URL", "https://", "PUBLIC_BASE_URL must look like"),
+        ("PUBLIC_BASE_URL", "https://example.com/?a=1", "PUBLIC_BASE_URL must look like"),
+        # The service is served at the root of its address: the web page uses paths such as /api/jobs.
+        ("PUBLIC_BASE_URL", "https://example.com/texdrop", "PUBLIC_BASE_URL must look like"),
+        ("PUBLIC_BASE_URL", "https://texdrop.example.com:99999", "PUBLIC_BASE_URL must look like"),
+        ("PUBLIC_BASE_URL", "https://user@texdrop.example.com", "PUBLIC_BASE_URL must look like"),
     ],
 )
 def test_invalid_values_are_rejected(name, value, message):

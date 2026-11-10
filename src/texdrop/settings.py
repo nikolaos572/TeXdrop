@@ -7,6 +7,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -22,6 +23,7 @@ class Settings:
     auto_delete_days: int  # 0 keeps jobs forever
     compile_timeout_seconds: float
     max_upload_bytes: int
+    public_base_url: str = ""  # base of the URLs handed out, e.g. https://texdrop.example.com (no path); "": the request's
     compile_memory_bytes: int = 0  # address space of each process of a compilation; 0: no limit
     compile_disk_bytes: int = 0  # a compilation's work directory; 0: no limit
     max_user_storage_bytes: int = 0  # each user's archives, PDFs and logs; 0: no limit
@@ -55,6 +57,7 @@ class Settings:
             auto_delete_days=_integer(env, "AUTO_DELETE_DAYS", default=0, minimum=0),
             compile_timeout_seconds=60 * _integer(env, "COMPILE_TIMEOUT_MINUTES", default=15, minimum=1),
             max_upload_bytes=1024**2 * _integer(env, "MAX_UPLOAD_MB", default=100, minimum=1),
+            public_base_url=_base_url(env.get("PUBLIC_BASE_URL", "")),
             compile_memory_bytes=1024**2 * _integer(env, "COMPILE_MEMORY_MB", default=0, minimum=0),
             compile_disk_bytes=1024**2 * _integer(env, "COMPILE_DISK_MB", default=0, minimum=0),
             max_user_storage_bytes=1024**2 * _integer(env, "MAX_USER_STORAGE_MB", default=0, minimum=0),
@@ -114,6 +117,37 @@ def _proxies(raw: str) -> str:
 def _path(env: Mapping[str, str], name: str, default: Path) -> Path:
     raw = env.get(name, "").strip()
     return Path(raw).absolute() if raw else default
+
+
+def _base_url(raw: str) -> str:
+    """PUBLIC_BASE_URL without its trailing slash. The service is served at the root of its
+    address (the web page uses paths such as /api/jobs), so the URL has no path."""
+    url = raw.strip().rstrip("/")
+    if not url:
+        return ""
+    parts = urlsplit(url)
+    if url_origin(url) is None or "@" in parts.netloc or parts.path or parts.query or parts.fragment:
+        raise SettingsError(f"PUBLIC_BASE_URL must look like https://texdrop.example.com (without a path), got {raw!r}")
+    return url
+
+
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def url_origin(url: str) -> str | None:
+    """The origin of an http(s) URL, written one way: scheme://host[:port], lowercased and
+    without the scheme's default port, as browsers write their Origin header. None for anything
+    else, such as the "null" of sandboxed pages."""
+    try:
+        parts = urlsplit(url.strip())
+        port = parts.port
+    except ValueError:
+        return None
+    scheme, host = parts.scheme.lower(), parts.hostname  # lowercased, without an IPv6 address's brackets
+    if scheme not in _DEFAULT_PORTS or not host:
+        return None
+    host = f"[{host}]" if ":" in host else host
+    return f"{scheme}://{host}" if port in (None, _DEFAULT_PORTS[scheme]) else f"{scheme}://{host}:{port}"
 
 
 def _timezone(name: str) -> ZoneInfo:

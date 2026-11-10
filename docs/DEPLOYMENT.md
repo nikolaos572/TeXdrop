@@ -119,9 +119,18 @@ data/
 
 ## Reverse proxies
 
-Put TeXdrop behind a reverse proxy (nginx, Caddy, Traefik, ...) for HTTPS. Three things
+Put TeXdrop behind a reverse proxy (nginx, Caddy, Traefik, ...) for HTTPS. Four things
 matter:
 
+- **The address.** Set `PUBLIC_BASE_URL` to the address users reach, such as
+  `https://texdrop.example.com`, so that the MCP server's transfer links point there,
+  whatever the proxy sends as `Host`, and so that browsers may send changes (a login, an
+  upload) only from pages at exactly that address. Without it, they may from pages of the
+  host the request was sent to, which the proxy must then pass on (nginx:
+  `proxy_set_header Host $host;`). TeXdrop must be served at the root of its address (a
+  domain or subdomain of its own): the web page uses paths such as `/api/jobs`, so it cannot
+  live under a path like `https://example.com/texdrop/`, and a `PUBLIC_BASE_URL` with a path
+  stops the server at startup.
 - **The client's address.** It is logged, and binds the MCP server's transfer links to the
   agent's computer. TeXdrop takes it from the proxy's `X-Forwarded-For` header only in
   requests from the proxies that `FORWARDED_ALLOW_IPS` names, and from the connection
@@ -151,7 +160,8 @@ matter:
   `$proxy_add_x_forwarded_for`), since the first address of the list is the one used.
 - **The scheme.** The proxies of `FORWARDED_ALLOW_IPS` are also trusted for
   `X-Forwarded-Proto`: the server then knows that the client used HTTPS, marks the web
-  page's cookie `Secure`, and hands out `https://` transfer links.
+  page's cookie `Secure`, and, without `PUBLIC_BASE_URL`, hands out `https://` transfer
+  links.
 - **Timeouts and sizes.** A request waiting for a job (`?wait=`) stays open until the job
   finishes; keep `wait` below the proxy's timeout (nginx: 60 seconds by default), as the MCP
   server does (50 seconds). Uploads are as large as the archives: raise the proxy's limit on
@@ -180,7 +190,8 @@ server {
 
 ```bash
 docker run -d --name texdrop -p 127.0.0.1:8000:8000 -v "$PWD/data:/data" \
-  -e TZ=Europe/Athens -e FORWARDED_ALLOW_IPS=172.17.0.1 \
+  -e TZ=Europe/Athens -e PUBLIC_BASE_URL=https://texdrop.example.com \
+  -e FORWARDED_ALLOW_IPS=172.17.0.1 \
   --cap-drop ALL --security-opt no-new-privileges --restart unless-stopped \
   texdrop
 ```

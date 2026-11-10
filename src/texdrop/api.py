@@ -62,6 +62,11 @@ def local_time(timestamp: float, timezone: ZoneInfo) -> str:
     return datetime.fromtimestamp(timestamp, timezone).isoformat(timespec="seconds")
 
 
+def base_url(request: Request) -> str:
+    """The URL the server is reached at: PUBLIC_BASE_URL, or the request's."""
+    return _settings(request).public_base_url or str(request.base_url).rstrip("/")
+
+
 class JobOut(BaseModel):
     id: int
     filename: str
