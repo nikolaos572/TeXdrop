@@ -18,6 +18,7 @@ def test_defaults():
     assert (settings.compile_memory_bytes, settings.compile_disk_bytes, settings.max_user_storage_bytes) == (0, 0, 0)
     assert (settings.unpack_timeout_seconds, settings.unpack_memory_bytes) == (300, 4096 * 1024**2)
     assert (settings.enable_mcp, settings.link_expiry_seconds) == (False, 3600)  # off unless asked for
+    assert settings.forwarded_allow_ips == "127.0.0.1"  # a proxy on this machine, so none in Docker
     assert (settings.host, settings.port) == ("0.0.0.0", 8000)
 
 
@@ -37,6 +38,7 @@ def test_values_from_environment():
             "UNPACK_MEMORY_MB": "0",
             "ENABLE_MCP": "1",
             "LINK_EXPIRY_MINUTES": "15",
+            "FORWARDED_ALLOW_IPS": "10.0.0.1",
             "HOST": "127.0.0.1",
             "PORT": "8200",
         }
@@ -52,6 +54,7 @@ def test_values_from_environment():
     assert settings.max_user_storage_bytes == 500 * 1024**2
     assert (settings.unpack_timeout_seconds, settings.unpack_memory_bytes) == (120, 0)
     assert (settings.enable_mcp, settings.link_expiry_seconds) == (True, 15 * 60)
+    assert settings.forwarded_allow_ips == "10.0.0.1"
     assert (settings.host, settings.port) == ("127.0.0.1", 8200)
 
 
@@ -92,8 +95,21 @@ def test_allow_unsandboxed_flag(value, expected):
         ("ENABLE_MCP", "on", "must be 1 or 0"),
         ("LINK_EXPIRY_MINUTES", "0", "at least 1"),
         ("LINK_EXPIRY_MINUTES", "1h", "must be an integer"),
+        # uvicorn would ignore these without a word: a network with host bits, a name, a list with *.
+        ("FORWARDED_ALLOW_IPS", "172.17.0.1/16", "FORWARDED_ALLOW_IPS must be IP addresses or networks"),
+        ("FORWARDED_ALLOW_IPS", "proxy.example.com", "got 'proxy.example.com'"),
+        ("FORWARDED_ALLOW_IPS", "10.0.0.1,*", "or \\* alone, got '\\*'"),
+        ("FORWARDED_ALLOW_IPS", "10.0.0.1,,10.0.0.2", "got ''"),
     ],
 )
 def test_invalid_values_are_rejected(name, value, message):
     with pytest.raises(SettingsError, match=message):
         Settings.from_env({name: value})
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("", "127.0.0.1"), ("*", "*"), (" 172.17.0.1 ", "172.17.0.1"), ("172.17.0.1, 172.18.0.0/16,::1", "172.17.0.1,172.18.0.0/16,::1")],
+)
+def test_the_trusted_proxies(value, expected):
+    assert Settings.from_env({"FORWARDED_ALLOW_IPS": value}).forwarded_allow_ips == expected

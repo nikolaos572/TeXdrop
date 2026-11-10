@@ -16,6 +16,8 @@ from urllib.parse import quote
 
 from fastapi import Request, Response
 
+from .client import client_ip
+
 FILE_NAME = "server.log"
 FILE_BYTES = 10 * 1024**2  # at this size the file becomes server.log.1, the previous .1 becomes .2, ...
 BACKUPS = 4  # ... and the oldest beyond .4 is deleted: the log takes at most 50 MB
@@ -78,9 +80,8 @@ def _log_request(request: Request, status: int, start: float) -> None:
     target = _LINK_SECRET.sub("***", quote(path))
     if query := request.scope["query_string"]:
         target += "?" + one_line(query.decode("latin-1"))
-    client = request.client.host if request.client else "-"
     user = getattr(request.state, "user", "-")
-    line = f"{client} {user} {request.method} {target} {status} {(time.monotonic() - start) * 1000:.0f} ms"
+    line = f"{client_ip(request)} {user} {request.method} {target} {status} {(time.monotonic() - start) * 1000:.0f} ms"
     if error := getattr(request.state, "error", None):
         line += f": {one_line(error)}"
     log.log(logging.ERROR if status >= 500 else logging.INFO, "%s", line)

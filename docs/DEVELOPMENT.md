@@ -18,8 +18,9 @@ The code is in `src/texdrop/`, one module per concern, each starting with a docs
 that says what it does: `settings`, `users` (tokens), `watched` (the users file, re-read
 when it changes), `store` (SQLite), `storage` (file layout), `archive` (safe extraction and
 main-file detection), `unpack` (runs `archive` in a confined helper process), `sandbox`,
-`compiler`, `jobs` (job lifecycle), `worker` (queue), `cleanup` (auto-delete), `auth`,
-`sessions` (the web page's logins), `api`, `links` (transfer links), `mcp_server` (the MCP
+`compiler`, `jobs` (job lifecycle), `worker` (queue), `cleanup` (auto-delete), `client` (the
+client's address), `auth`, `sessions` (the web page's logins), `api`, `links` (transfer
+links), `mcp_server` (the MCP
 server for AI agents, whose tools call `api`'s code), `web`, `logs`, `errors`, `app`
 (wiring), `accounts` (the commands' changes to the users file) and `__main__` (the server,
 and the `adduser` and `reset-token` commands).

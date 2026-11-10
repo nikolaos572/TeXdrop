@@ -47,6 +47,7 @@ def test_starts_with_the_full_sandbox(settings, fake_compiler, monkeypatch, capl
         pass
     assert [record for record in caplog.records if record.levelno >= logging.WARNING] == []
     assert "every protection of the sandbox is active" in caplog.text
+    assert "clients' addresses come from X-Forwarded-For in requests from 127.0.0.1 (FORWARDED_ALLOW_IPS)" in caplog.text
 
 
 @pytest.mark.parametrize("data_dir", ["/opt/latex-data", "/usr/local/data", "/etc/latex"])

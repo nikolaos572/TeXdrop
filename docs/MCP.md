@@ -172,19 +172,16 @@ The links' endpoints are described in [API.md](API.md#transfer-links-apilinkssec
 ## Behind a reverse proxy
 
 The MCP server needs nothing special from a reverse proxy (nginx, nginx proxy manager,
-Caddy, Traefik, ...): its answers are plain JSON, without event streams or WebSockets. Two
-things matter, as for the rest of the service:
+Caddy, Traefik, ...): its answers are plain JSON, without event streams or WebSockets. What
+matters is what matters for the rest of the service (see
+[DEPLOYMENT.md](DEPLOYMENT.md#reverse-proxies)):
 
-- **`FORWARDED_ALLOW_IPS` must name the proxy** (see
-  [CONFIGURATION.md](CONFIGURATION.md#environment-variables)), and TeXdrop's port must be
-  reachable only from the proxy. The server then takes each client's address from the
-  proxy's `X-Forwarded-For`, which links are bound to, and the scheme from
-  `X-Forwarded-Proto`, which the links' URLs use. Without it, every request seems to come
-  from the proxy, so links would work from any client of the proxy, and their URLs would
-  start with `http://` while agents connect with `https://`. With Docker, the container
-  sees a proxy on the same machine coming from the Docker network's gateway (often
-  `172.17.0.1`), or from the proxy container's address when both are on the same Docker
-  network.
+- **The client's address** binds the links. **`FORWARDED_ALLOW_IPS` must name the proxy**,
+  as the container sees it (often `172.17.0.1`), so that TeXdrop takes each client's address
+  from the proxy's `X-Forwarded-For`, and the scheme from `X-Forwarded-Proto`, which the
+  links' URLs use. Until then, every request seems to come from the proxy, so links would
+  work for any client of the proxy, and their URLs would start with `http://` while agents
+  connect with `https://`.
 - **Timeouts and sizes.** `get_job` answers within 50 seconds, below nginx's default limit
   of 60. Uploads through links are as large as the archives: raise the proxy's limit
   (`client_max_body_size` for nginx) if it is below `MAX_UPLOAD_MB`.

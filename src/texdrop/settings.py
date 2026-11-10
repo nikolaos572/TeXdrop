@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -29,6 +30,7 @@ class Settings:
     allow_unsandboxed: bool = False  # start even where the sandbox lacks some of its protections
     enable_mcp: bool = False  # serve the MCP endpoint for AI agents, and its transfer links
     link_expiry_seconds: float = 3600  # a transfer link not used by then stops working
+    forwarded_allow_ips: str = "127.0.0.1"  # reverse proxies whose X-Forwarded-* headers are trusted ("*": any peer)
     host: str = "0.0.0.0"  # where the server listens (without Docker; Docker maps the port instead)
     port: int = 8000
 
@@ -61,6 +63,7 @@ class Settings:
             allow_unsandboxed=_flag(env, "ALLOW_UNSANDBOXED"),
             enable_mcp=_flag(env, "ENABLE_MCP"),
             link_expiry_seconds=60 * _integer(env, "LINK_EXPIRY_MINUTES", default=60, minimum=1),
+            forwarded_allow_ips=_proxies(env.get("FORWARDED_ALLOW_IPS", "")),
             host=env.get("HOST", "").strip() or "0.0.0.0",
             port=_integer(env, "PORT", default=8000, minimum=1, maximum=65535),
         )
@@ -88,6 +91,24 @@ def _flag(env: Mapping[str, str], name: str) -> bool:
     if raw in ("1", "true", "yes"):
         return True
     raise SettingsError(f"{name} must be 1 or 0, got {raw!r}")
+
+
+def _proxies(raw: str) -> str:
+    """FORWARDED_ALLOW_IPS, checked: uvicorn ignores an entry it cannot read (such as
+    172.17.0.1/16) without a word, and every visitor would keep the proxy's address."""
+    raw = raw.strip()
+    if raw in ("", "*"):
+        return raw or "127.0.0.1"
+    entries = [entry.strip() for entry in raw.split(",")]
+    for entry in entries:
+        try:
+            ipaddress.ip_network(entry) if "/" in entry else ipaddress.ip_address(entry)
+        except ValueError:
+            raise SettingsError(
+                "FORWARDED_ALLOW_IPS must be IP addresses or networks separated by commas, such as 172.17.0.1 "
+                f"or 172.18.0.0/16, or * alone, got {entry!r}"
+            ) from None
+    return ",".join(entries)
 
 
 def _path(env: Mapping[str, str], name: str, default: Path) -> Path:

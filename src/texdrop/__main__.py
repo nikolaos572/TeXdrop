@@ -73,6 +73,7 @@ def serve() -> None:
         host=settings.host,
         port=settings.port,
         proxy_headers=True,
+        forwarded_allow_ips=settings.forwarded_allow_ips,
         log_config=None,
         access_log=False,
         timeout_graceful_shutdown=SHUTDOWN_SECONDS,

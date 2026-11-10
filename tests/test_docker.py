@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import shutil
 import stat
 import subprocess
@@ -262,6 +263,35 @@ def test_a_users_file_mounted_read_only_is_refused(image, data, tmp_path, mode, 
         assert shared.read_bytes() == before
         assert session_of(server, TOKEN) == 200
         assert not list(data.glob(".*.tmp"))
+    finally:
+        server.stop()
+
+
+def logged_client(server: Server, forwarded_for: str) -> str:
+    """Send a request that says it comes through a proxy for this address; return the client's
+    address that the server's log shows for it (a refused request is logged)."""
+    marker = secrets.token_hex(8)
+    httpx2.get(f"{server.url}/api/jobs", params={"probe": marker}, headers={"X-Forwarded-For": forwarded_for})
+    pattern = re.compile(rf"INFO    (\S+) - GET /api/jobs\?probe={marker} 401 ")
+    deadline = time.monotonic() + 10
+    while not (match := pattern.search(subprocess.run(["docker", "logs", server.container], capture_output=True, text=True).stderr)):
+        assert time.monotonic() < deadline, f"no log line for the request {marker}"
+        time.sleep(0.2)
+    return match.group(1)
+
+
+def test_x_forwarded_for_counts_only_from_a_trusted_proxy(image, data):
+    # By default no proxy is trusted, so a client cannot put any address it likes in the log.
+    server = Server(image, data)
+    try:
+        peer = logged_client(server, "203.0.113.7")
+        assert peer != "203.0.113.7"
+    finally:
+        server.stop()
+    # Trusting exactly that peer, as the docs say to find it, the log shows the visitor's address.
+    server = Server(image, data, "--env", f"FORWARDED_ALLOW_IPS={peer}")
+    try:
+        assert logged_client(server, "203.0.113.7") == "203.0.113.7"
     finally:
         server.stop()
 

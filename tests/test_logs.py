@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 import re
 import shutil
@@ -24,6 +25,7 @@ from helpers import (
 
 from texdrop import logs
 from texdrop.__main__ import SHUTDOWN_SECONDS
+from texdrop.app import create_app
 from texdrop.archive import SUPPORTED
 
 TIME = r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d [+-]\d{4}"
@@ -74,6 +76,17 @@ def test_failed_requests_say_why(app, client, caplog):
         f"testclient alice GET /api/jobs?page=x 422 N ms: query.page: {NOT_AN_INTEGER}",
         f"testclient alice POST /api/inspect 400 N ms: unsupported file type: upload a {SUPPORTED} archive",
         "testclient - POST /api/jobs 411 N ms: Content-Length required",
+    ]
+
+
+def test_the_client_comes_from_x_forwarded_for_of_trusted_proxies_only(settings, fake_compiler, caplog):
+    caplog.set_level(logging.INFO)
+    forwarded = {"X-Forwarded-For": "203.0.113.7"}
+    TestClient(create_app(settings, fake_compiler)).get("/api/jobs", headers=forwarded)  # refused, so logged
+    TestClient(create_app(dataclasses.replace(settings, forwarded_allow_ips="*"), fake_compiler)).get("/api/jobs", headers=forwarded)
+    assert access_lines(caplog) == [
+        "testclient - GET /api/jobs 401 N ms: missing or invalid token",  # by default, the header of a client is ignored
+        "203.0.113.7 - GET /api/jobs 401 N ms: missing or invalid token",
     ]
 
 

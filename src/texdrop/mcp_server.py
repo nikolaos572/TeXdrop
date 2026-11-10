@@ -30,6 +30,7 @@ from starlette.types import Receive, Scope, Send
 
 from . import __version__, api, logs
 from .auth import header_user
+from .client import client_ip
 from .links import UPLOAD, LinkService
 from .settings import Settings
 
@@ -200,11 +201,11 @@ def _tool_errors(request: Request) -> Iterator[None]:
 
 def _new_link(request: Request, file: str, job_id: int | None = None, filename: str | None = None) -> LinkOut:
     """A link for the client of `request` to transfer `file` (UPLOAD or one of a job's files)."""
-    if request.client is None:
+    client = client_ip(request)
+    if client == "-":
         raise ToolError("the server cannot tell your address, to which links are bound")
-    # Behind a reverse proxy, the address is the client's if FORWARDED_ALLOW_IPS names the proxy.
     links: LinkService = request.app.state.links
-    secret, expires_at = links.create(request.state.user, request.client.host, file, job_id)
+    secret, expires_at = links.create(request.state.user, client, file, job_id)
     upload = file == UPLOAD
     url = str(request.url_for("upload_through_link" if upload else "download_through_link", secret=secret))
     if upload:
