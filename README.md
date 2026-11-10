@@ -33,7 +33,6 @@ docker build -t texdrop .                             # about 6 GB: the full TeX
 
 docker run -d --name texdrop \
   --restart unless-stopped \
-  --cap-drop ALL --security-opt no-new-privileges \
   -p 8000:8000 \
   -e TZ=Europe/Athens \
   -e AUTO_DELETE_DAYS=15 \
@@ -44,7 +43,9 @@ docker exec texdrop python -m texdrop adduser alice   # prints alice's token
 ```
 
 Then open `http://your-host:8000` and log in with the token. `--restart unless-stopped`
-starts TeXdrop again after a crash or a reboot. Add users the same way, at any time;
+starts TeXdrop again after a crash or a reboot. Extra hardening (`--cap-drop ALL`,
+`--security-opt no-new-privileges`) and other options are in
+[Deployment](docs/DEPLOYMENT.md#options). Add users the same way, at any time;
 `python -m texdrop reset-token alice` gives alice a new token if theirs is lost or leaked.
 To let AI agents use TeXdrop, add `-e ENABLE_MCP=1` and connect them as
 [MCP.md](docs/MCP.md#connecting-an-agent) shows. For the full sandbox, the host needs
