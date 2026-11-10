@@ -132,6 +132,18 @@ def run_cli(data: Path, *arguments: str, **env: str) -> subprocess.CompletedProc
     )
 
 
+def login(app: FastAPI, user: str = "alice") -> str:
+    """Log a browser in as `user`, as the web page does: the value of its session cookie."""
+    response = TestClient(app).post("/api/session", json={"token": TOKENS[user]})
+    assert response.status_code == 200, response.text
+    return response.cookies["texdrop_session"]
+
+
+def browser_of(app: FastAPI, user: str = "alice", **options) -> TestClient:
+    """A client of `app`, logged in as `user` through the web page."""
+    return TestClient(app, cookies={"texdrop_session": login(app, user)}, **options)
+
+
 def run_queue(app: FastAPI) -> None:
     """Process every queued job, oldest first, in the calling thread."""
     while job := app.state.service.claim_next():

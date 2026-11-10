@@ -24,9 +24,9 @@ there is no administrator account.
 
 A token is what its user logs in with on the web page, and what their scripts and agents
 send. `reset-token` is for a token that is lost or leaked: the old token stops working at
-once, so the user has to log in again and to give the new one to their scripts and agents.
-Both commands print the token alone on standard output and their message on standard error,
-so a script can write `token=$(docker exec texdrop python -m texdrop adduser alice)`. They
+once, and every browser logged in with it is logged out, so the user has to log in again and
+to give the new one to their scripts and agents. Both commands print the token alone on
+standard output and their message on standard error, so a script can write `token=$(docker exec texdrop python -m texdrop adduser alice)`. They
 exit with status 1, and change nothing, if the user already exists (`adduser`) or does not
 (`reset-token`), if the name is invalid, or if the file is invalid or cannot be written.
 

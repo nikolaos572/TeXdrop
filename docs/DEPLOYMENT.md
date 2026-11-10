@@ -105,6 +105,7 @@ take a few seconds longer.
 ```
 data/
 ├── users.json                         users and tokens (python -m texdrop adduser creates this)
+├── sessions.json                      the web page's sessions, as SHA-256 digests (the server writes this)
 ├── jobs.db                            job metadata (SQLite)
 ├── users/<user>/inputs/<id>.zip       uploaded archives
 ├── users/<user>/outputs/<id>.pdf      compiled documents

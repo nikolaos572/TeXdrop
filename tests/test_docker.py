@@ -160,6 +160,11 @@ def test_a_host_directory_given_to_61001_works(image, tmp_path):
 def test_web_ui_and_auth(server):
     assert 'id="login-form"' in httpx2.get(f"{server.url}/").text
     assert httpx2.get(f"{server.url}/api/jobs").status_code == 401
+    login = httpx2.post(f"{server.url}/api/session", json={"token": TOKEN})
+    cookie = {"Cookie": f"texdrop_session={login.cookies['texdrop_session']}"}
+    assert 'id="login-form"' not in httpx2.get(f"{server.url}/", headers=cookie).text
+    assert httpx2.delete(f"{server.url}/api/session", headers=cookie).status_code == 204
+    assert 'id="login-form"' in httpx2.get(f"{server.url}/", headers=cookie).text  # a copy of the cookie is logged out too
 
 
 def manage(container: str, *arguments: str, user: str = "app") -> subprocess.CompletedProcess[str]:

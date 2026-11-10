@@ -13,13 +13,14 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
 
-from . import __version__, api, logs, sandbox, web
+from . import __version__, api, auth, logs, sandbox, web
 from .cleanup import CleanupScheduler
 from .compiler import LatexCompiler, tex_directories
 from .errors import InvalidInput
 from .jobs import JobService
 from .links import REFUSAL, LinkRefused, LinkService
 from .mcp_server import McpEndpoint
+from .sessions import Sessions
 from .settings import Settings, SettingsError
 from .storage import Storage
 from .store import JobStore
@@ -55,6 +56,7 @@ def create_app(settings: Settings | None = None, compiler: LatexCompiler | None 
     users = UserRegistry(settings.users_file)
     if not users.names():
         log.warning("no users yet: add one with python -m texdrop adduser <name>")
+    sessions = Sessions(storage.sessions_file, users, auth.COOKIE_MAX_AGE)
     unpacker = Unpacker(settings.max_extracted_bytes, settings.unpack_timeout_seconds, settings.unpack_memory_bytes)
     service = JobService(
         JobStore(storage.db_path), storage, unpacker, max_user_storage_bytes=settings.max_user_storage_bytes
@@ -96,6 +98,7 @@ def create_app(settings: Settings | None = None, compiler: LatexCompiler | None 
     app.state.settings = settings
     app.state.storage = storage
     app.state.users = users
+    app.state.sessions = sessions
     app.state.service = service
     app.state.worker = worker
     if mcp is not None:

@@ -1,6 +1,7 @@
 """Layout of the data directory (the volume mounted into the container).
 
     <data>/users.json                        users and tokens (USERS_FILE)
+    <data>/sessions.json                     the web page's sessions (sessions.py)
     <data>/jobs.db                           job metadata (SQLite)
     <data>/users/<user>/inputs/<id><ext>     uploaded archives
     <data>/users/<user>/outputs/<id>.pdf     compiled documents
@@ -40,6 +41,7 @@ class Storage:
         self.root = root
         self.db_path = root / "jobs.db"
         self.tmp_dir = root / "tmp"
+        self.sessions_file = root / "sessions.json"
 
     def prepare(self) -> None:
         """Create the layout and discard leftovers of an interrupted run."""
@@ -165,10 +167,10 @@ def locked_file(path: Path) -> Iterator[Path]:
 
 
 def write_secret_json(path: Path, value: dict[str, Any], *, fresh: bool = False) -> None:
-    """Replace a file with secrets (users.json) atomically, so that the server never reads a
-    part of it. The new file keeps the owner and mode of the old one. Without one, or when
-    `fresh`, it is private to the directory's owner, so that the server can still read it
-    when root runs the command."""
+    """Replace a file with secrets (users.json, sessions.json) atomically, so that the server
+    never reads a part of it. The new file keeps the owner and mode of the old one. Without
+    one, or when `fresh`, it is private to the directory's owner, so that the server can still
+    read it when root runs the command."""
     current = None
     if not fresh:
         with suppress(FileNotFoundError):

@@ -3,7 +3,7 @@ import random
 
 import pytest
 from fastapi.testclient import TestClient
-from helpers import MINIMAL_TEX, TOKENS, run_queue, submit
+from helpers import MINIMAL_TEX, TOKENS, browser_of, run_queue, submit
 
 from texdrop import __version__
 from texdrop.app import create_app
@@ -36,7 +36,7 @@ def test_token_is_never_accepted_in_the_url(app):
 
 
 def test_cookie_authenticates_reads_but_changes_need_the_csrf_header(app):
-    browser = TestClient(app, cookies={"latex_token": TOKENS["alice"]})
+    browser = browser_of(app)
     assert browser.get("/api/jobs").status_code == 200
     assert browser.delete("/api/jobs").status_code == 403
     assert browser.delete("/api/jobs", headers={"X-Requested-With": "fetch"}).status_code == 200

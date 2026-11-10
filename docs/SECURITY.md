@@ -44,11 +44,17 @@ disk as it is given. This page describes what keeps documents and users apart, a
   with relative paths, and are limited in size and entry count. Main file names are
   limited to characters that are safe on a shell command line.
 - Tokens are compared in constant time and accepted only in the `Authorization`
-  header or the cookie, never in URLs. `python -m texdrop adduser` and `reset-token` make
-  random 256-bit tokens. The users file holds the tokens as they are, so `adduser` creates
-  it readable only by its owner; keep it that way. The cookie is `HttpOnly`, `SameSite=Strict`,
-  `Secure` over HTTPS, and changes made with it require a header that other sites
-  cannot send. Pages are served with a strict Content Security Policy.
+  header, never in URLs. `python -m texdrop adduser` and `reset-token` make random 256-bit
+  tokens. The users file holds the tokens as they are, so `adduser` creates it readable only
+  by its owner; keep it that way.
+- The web page's cookie holds a session, not the token: a random 256-bit id, which the
+  server keeps in `sessions.json` only as its SHA-256, with that of the token it was started
+  with. Logging out ends the session on the server, so the cookie stops working everywhere,
+  also a copy of it taken before. A session also ends after 30 days, and as soon as its user
+  is removed or given a new token (`reset-token` logs every browser of the user out). The
+  cookie is `HttpOnly`, `SameSite=Strict`, `Secure` over HTTPS, and changes made with it
+  require a header that other sites cannot send. Pages are served with a strict Content
+  Security Policy.
 - The [MCP server](MCP.md) for AI agents is off unless `ENABLE_MCP=1`. It accepts the
   token only in the `Authorization` header (not the cookie), and its tools run the API's
   code, with its checks. Files move through transfer links, whose URLs hold a 256-bit
