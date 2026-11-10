@@ -43,9 +43,9 @@ def image() -> str:
 
 
 class Server:
-    """A container of the image, serving a data directory from the host."""
+    """A container of the image, serving a data directory from the host (or a named volume)."""
 
-    def __init__(self, image: str, data: Path, *options: str, hardened: bool = True) -> None:
+    def __init__(self, image: str, data: Path | str, *options: str, hardened: bool = True) -> None:
         self.container = docker(
             "run", "--detach", "--publish", "127.0.0.1::8000", "--volume", f"{data}:/data",
             "--env", "TZ=Europe/Athens", "--env", "COMPILE_TIMEOUT_MINUTES=5",
@@ -61,8 +61,11 @@ class Server:
                 self.client.get("/api/health").raise_for_status()
                 return
             except httpx2.HTTPError:
-                if time.monotonic() > deadline:
-                    raise AssertionError(docker("logs", self.container)) from None
+                running = docker("inspect", "--format", "{{.State.Running}}", self.container) == "true"
+                if not running or time.monotonic() > deadline:
+                    logs = subprocess.run(["docker", "logs", self.container], capture_output=True, text=True)
+                    self.stop()
+                    raise AssertionError(f"the server did not start:\n{logs.stdout}{logs.stderr}") from None
                 time.sleep(0.5)
 
     def compile(self, files: dict[str, str], tmp_path: Path, **form: str) -> dict:
@@ -84,7 +87,7 @@ class Server:
 def data(tmp_path: Path, image: str):
     data = tmp_path / "data"
     data.mkdir()
-    data.chmod(0o777)  # the container runs as uid 1001
+    data.chmod(0o777)  # the container runs as uid 61001
     (data / "users.json").write_text(json.dumps({"users": {"tester": TOKEN}}))
     yield data
     # Let the host user remove what the container created.
@@ -98,9 +101,60 @@ def server(image: str, data: Path):
     server.stop()
 
 
+PROCESS_OWNERS = """
+import os
+for pid in filter(str.isdigit, os.listdir("/proc")):
+    try:
+        owner = os.stat(f"/proc/{pid}")
+    except FileNotFoundError:  # ended meanwhile
+        continue
+    print(f"{owner.st_uid}:{owner.st_gid}")
+"""
+
+
 def test_runs_as_an_unprivileged_user(server):
-    assert docker("exec", server.container, "id", "-u") == "1001"
-    assert docker("inspect", "--format", "{{.Config.User}}", server.container) == "app"
+    assert docker("exec", server.container, "id", "-u") == "61001"
+    assert docker("inspect", "--format", "{{.Config.User}}", server.container) == "61001:61001"
+    # Every process, the init process too: never root, nor a usual login of the host such as uid 1000.
+    assert set(docker("exec", server.container, "python", "-c", PROCESS_OWNERS).split()) == {"61001:61001"}
+
+
+def test_a_named_volume_needs_no_preparation(image):
+    volume = docker("volume", "create")
+    try:
+        server = Server(image, volume)
+        try:
+            assert docker("exec", server.container, "stat", "-c", "%u:%g", "/data") == "61001:61001"
+            added = manage(server.container, "adduser", "nikos")
+            assert added.returncode == 0, added.stderr
+            assert session_of(server, added.stdout.strip()) == 200
+        finally:
+            server.stop()
+    finally:
+        subprocess.run(["docker", "volume", "rm", volume], check=False, capture_output=True)
+
+
+def test_a_host_directory_given_to_61001_works(image, tmp_path):
+    """The preparation docs/DEPLOYMENT.md describes for a host directory, without chmod 777."""
+    data = tmp_path / "host-data"
+    data.mkdir()
+
+    def as_root(*command: str) -> None:
+        subprocess.run(["docker", "run", "--rm", "--user", "0", "--volume", f"{data}:/data", image, *command], check=True)
+
+    try:
+        as_root("chown", "61001:61001", "/data")  # the form that also works with rootless Docker
+        server = Server(image, data)
+        try:
+            added = manage(server.container, "adduser", "nikos")
+            assert added.returncode == 0, added.stderr
+            assert session_of(server, added.stdout.strip()) == 200
+            owners = docker("exec", server.container, "stat", "-c", "%u:%g", "/data/users.json", "/data/jobs.db")
+            assert owners.split() == ["61001:61001", "61001:61001"]
+        finally:
+            server.stop()
+    finally:
+        as_root("chown", "-R", f"{os.getuid()}:{os.getgid()}", "/data")  # for pytest to remove it
 
 
 def test_web_ui_and_auth(server):
@@ -129,7 +183,7 @@ def test_users_are_managed_while_the_server_runs(image, data):
         first = added.stdout.strip()
         assert session_of(server, first) == 200
         written = (data / "users.json").stat()
-        assert (written.st_uid, stat.S_IMODE(written.st_mode)) == (1001, 0o600)
+        assert (written.st_uid, stat.S_IMODE(written.st_mode)) == (61001, 0o600)
 
         reset = manage(server.container, "reset-token", "nikos")
         assert reset.returncode == 0, reset.stderr

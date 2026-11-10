@@ -26,11 +26,12 @@ the locale) get none, and their documents compile without it.
 
 ## Running
 
-The container runs as uid 1001, which must own the data directory:
+The container runs as uid and gid 61001, which must own the data directory (no user or group
+with that number needs to exist on the host):
 
 ```bash
 mkdir data
-sudo chown -R 1001:1001 data
+sudo chown -R 61001:61001 data
 
 docker run -d --name texdrop -p 8000:8000 -v "$PWD/data:/data" \
   -e TZ=Europe/Athens -e AUTO_DELETE_DAYS=15 \
@@ -46,6 +47,16 @@ server refuses every request; [CONFIGURATION.md](CONFIGURATION.md#users) has mor
 users. Everything the service stores is in the data directory, so the container can be
 removed and started again from a new image (`docker rm -f texdrop`, then the same
 `docker run`) without losing anything.
+
+Images before November 2026 ran as uid 1001: when you upgrade from one, give the data
+directory to 61001 once (the same `sudo chown -R 61001:61001 data`) before you start the new
+container. With rootless Docker or `userns-remap`, the host sees the container's ids shifted,
+so a `chown` on the host gives the wrong owner; give the directory to 61001 from inside a
+container instead:
+
+```bash
+docker run --rm --user 0 -v "$PWD/data:/data" texdrop chown -R 61001:61001 /data
+```
 
 `docker run` and compose are equivalent: `compose.yaml` only writes down the same options,
 and every setting is an environment variable, which `-e` sets as well. Safety does not

@@ -28,7 +28,7 @@ through its HTTP API, and also has a simple web page.
 docker build -t texdrop .                    # ~9 GB: the full TeX Live distribution
 
 mkdir data
-sudo chown -R 1001:1001 data                 # the container runs as uid 1001
+sudo chown -R 61001:61001 data               # the container runs as uid 61001
 
 docker run -d --name texdrop -p 8000:8000 -v "$PWD/data:/data" \
   -e TZ=Europe/Athens -e AUTO_DELETE_DAYS=15 \

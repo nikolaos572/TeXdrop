@@ -1,5 +1,5 @@
 # Example deployment: docker compose up -d
-# Before the first start: mkdir data && sudo chown 1001:1001 data.
+# Before the first start: mkdir data && sudo chown -R 61001:61001 data.
 # After it, add users: docker compose exec texdrop python -m texdrop adduser <name>, which prints their token.
 # Every setting is described in docs/CONFIGURATION.md, the container's resource limits in docs/DEPLOYMENT.md.
 services:
