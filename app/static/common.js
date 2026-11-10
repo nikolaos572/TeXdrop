@@ -4,24 +4,33 @@
 
 const $ = (id) => document.getElementById(id);
 
-// Every request carries the cookie; the extra header marks it as coming from this page.
+// Every request carries the cookie; the extra header marks it as coming from this page
+// (the server refuses cookie-authenticated changes without it).
 async function api(path, options = {}) {
-  const response = await fetch(path, { ...options, headers: { "X-Requested-With": "fetch" } });
+  let response;
+  try {
+    response = await fetch(path, { ...options, headers: { ...options.headers, "X-Requested-With": "fetch" } });
+  } catch {
+    throw new Error("The server cannot be reached.");
+  }
   if (response.status === 401) {
-    location.reload(); // token revoked or cookie expired: back to the login page
+    location.reload(); // logged out, session expired or token changed: back to the login page
     throw new Error("Session expired.");
   }
-  if (!response.ok) {
-    let detail = `${response.status} ${response.statusText}`;
-    try {
-      const body = await response.json();
-      detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
-    } catch {
-      // keep the status text
-    }
-    throw new Error(detail);
-  }
+  if (!response.ok) throw new Error(await errorDetail(response));
   return response.status === 204 ? null : response.json();
+}
+
+// The server's reason ({"detail": ...}), or the status if the body has none.
+async function errorDetail(response) {
+  try {
+    const { detail } = await response.json();
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) return detail.map((item) => item.msg ?? JSON.stringify(item)).join("; ");
+    return JSON.stringify(detail);
+  } catch {
+    return `${response.status} ${response.statusText}`;
+  }
 }
 
 function showMessage(text, kind = "") {
