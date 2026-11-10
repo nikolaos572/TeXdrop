@@ -13,7 +13,7 @@ disk as it is given. This page describes what keeps documents and users apart, a
   left behind, so a plain `docker run` is as safe as `compose.yaml`.
 - Every compilation runs in a [Landlock](https://docs.kernel.org/userspace-api/landlock.html)
   sandbox (no privileges needed). It can read the system and TeX Live but no other
-  file: not other users' jobs, not `config.json`, not the database. It can write only
+  file: not other users' jobs, not `users.json`, not the database. It can write only
   its own work directory, and cannot signal processes outside it. TeX's own file
   restrictions are no substitute (`\input{/abs/path}` and Lua's `io.open` read any
   file). The sandbox has all its protections on Linux 6.12 or newer (x86-64 or ARM64);
@@ -41,7 +41,9 @@ disk as it is given. This page describes what keeps documents and users apart, a
   with relative paths, and are limited in size and entry count. Main file names are
   limited to characters that are safe on a shell command line.
 - Tokens are compared in constant time and accepted only in the `Authorization`
-  header or the cookie, never in URLs. The cookie is `HttpOnly`, `SameSite=Strict`,
+  header or the cookie, never in URLs. `python -m texdrop adduser` and `reset-token` make
+  random 256-bit tokens. The users file holds the tokens as they are, so `adduser` creates
+  it readable only by its owner; keep it that way. The cookie is `HttpOnly`, `SameSite=Strict`,
   `Secure` over HTTPS, and changes made with it require a header that other sites
   cannot send. Pages are served with a strict Content Security Policy.
 - The [MCP server](MCP.md) for AI agents is off unless `ENABLE_MCP=1`. It accepts the
@@ -97,7 +99,7 @@ named). Please keep the issue private until then. Fixes go into the latest versi
 These are vulnerabilities:
 
 - A document or archive that gets past a protection described above: it reads or changes
-  another job's files, `config.json` or the database, writes outside its own directory, uses
+  another job's files, `users.json` or the database, writes outside its own directory, uses
   the network, signals processes outside its sandbox, or keeps running after its job ends.
 - Access to another user's jobs, or to the API without a valid token.
 - A transfer link of the MCP server that works from another address, after it expired or

@@ -28,22 +28,30 @@ through its HTTP API, and also has a simple web page.
 docker build -t texdrop .                    # ~9 GB: the full TeX Live distribution
 
 mkdir data
-openssl rand -hex 32                         # run once per user to make a token
-cat > data/config.json <<'EOF'
-{"users": {"alice": "<token for alice>", "bob": "<token for bob>"}}
-EOF
 sudo chown -R 1001:1001 data                 # the container runs as uid 1001
 
 docker run -d --name texdrop -p 8000:8000 -v "$PWD/data:/data" \
   -e TZ=Europe/Athens -e AUTO_DELETE_DAYS=15 \
   --cap-drop ALL --security-opt no-new-privileges --restart unless-stopped \
   texdrop
+
+docker exec texdrop python -m texdrop adduser alice    # prints alice's token
 ```
 
-or `docker compose up -d` with [`compose.yaml`](compose.yaml). Then open
-`http://localhost:8000` and log in with your token. Everything the service stores lives in
-the mounted directory, so the container can be removed or upgraded without losing data.
-The service also runs without Docker. For the full sandbox it needs Linux 6.12 or newer.
+or `docker compose up -d` with [`compose.yaml`](compose.yaml), and the same command with
+`docker compose exec texdrop` instead of `docker exec texdrop`. Then open
+`http://localhost:8000` and log in with the token.
+
+Add more users the same way, at any time, without a restart. If a token is lost or leaked,
+`docker exec texdrop python -m texdrop reset-token alice` prints a new one, and the old one
+stops working at once, in the browser and in the user's scripts and agents alike. (See
+[the users](docs/CONFIGURATION.md#users), also for removing a user.) The commands keep the
+users in `data/users.json`, in the same format as
+[PixDrop](https://github.com/nikolaos572/PixDrop)'s (one file can serve both).
+
+Everything the service stores lives in the mounted directory, so the container can be
+removed or upgraded without losing data. The service also runs without Docker. For the full
+sandbox it needs Linux 6.12 or newer.
 
 ## Using it
 
@@ -101,7 +109,7 @@ directory if needed). If it fails, show me the TeX errors."*
 
 - [Deployment](docs/DEPLOYMENT.md): requirements, building, running with or without Docker,
   the data directory, container limits, logs.
-- [Configuration](docs/CONFIGURATION.md): the users file, the environment variables and their
+- [Configuration](docs/CONFIGURATION.md): the users, the environment variables and their
   defaults, fixed limits.
 - [API documentation](docs/API.md): every endpoint, its parameters, responses and errors,
   how jobs behave, and examples in the shell and Python.

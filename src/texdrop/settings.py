@@ -17,6 +17,7 @@ class SettingsError(ValueError):
 class Settings:
     data_dir: Path
     timezone: ZoneInfo
+    users_file: Path  # users and their tokens
     auto_delete_days: int  # 0 keeps jobs forever
     compile_timeout_seconds: float
     max_upload_bytes: int
@@ -44,9 +45,11 @@ class Settings:
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> Settings:
+        data_dir = cls.data_dir_from_env(env)
         return cls(
-            data_dir=cls.data_dir_from_env(env),
+            data_dir=data_dir,
             timezone=_timezone(env.get("TZ", "UTC")),
+            users_file=_path(env, "USERS_FILE", data_dir / "users.json"),
             auto_delete_days=_integer(env, "AUTO_DELETE_DAYS", default=0, minimum=0),
             compile_timeout_seconds=60 * _integer(env, "COMPILE_TIMEOUT_MINUTES", default=15, minimum=1),
             max_upload_bytes=1024**2 * _integer(env, "MAX_UPLOAD_MB", default=100, minimum=1),
@@ -85,6 +88,11 @@ def _flag(env: Mapping[str, str], name: str) -> bool:
     if raw in ("1", "true", "yes"):
         return True
     raise SettingsError(f"{name} must be 1 or 0, got {raw!r}")
+
+
+def _path(env: Mapping[str, str], name: str, default: Path) -> Path:
+    raw = env.get(name, "").strip()
+    return Path(raw).absolute() if raw else default
 
 
 def _timezone(name: str) -> ZoneInfo:

@@ -76,7 +76,7 @@ def test_submit_detects_the_main_file(client, make_archive):
     assert response.status_code == 201
     job = response.json()
     assert (job["main"], job["engine"], job["status"], job["queue_position"]) == ("main.tex", "pdflatex", "queued", 1)
-    assert job["submitted_at"].endswith("+03:00")  # shown in the configured time zone (Europe/Athens)
+    assert job["submitted_at"][-6:] in ("+02:00", "+03:00")  # shown in the configured time zone (Europe/Athens)
     assert (job["has_pdf"], job["has_log"], job["finished_at"]) == (False, False, None)
 
 

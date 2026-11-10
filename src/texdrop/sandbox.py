@@ -137,7 +137,7 @@ def missing_protections(abi: int, syscall_filter: bool) -> list[str]:
     if not abi:
         missing.append(
             "no Landlock (Linux 5.13+): documents can read and change every file the server can, "
-            "including config.json with all tokens and every user's jobs"
+            "including users.json with all tokens and every user's jobs"
         )
     elif abi < 3 and not syscall_filter:
         missing.append(

@@ -1,21 +1,81 @@
 # Configuration
 
-The users and their tokens are in a file in the data directory; everything else is an
-environment variable. How to run the service is in [DEPLOYMENT.md](DEPLOYMENT.md).
+The users and their tokens are in a file in the data directory, `users.json`, managed with
+commands; everything else is an environment variable. How to run the service is in
+[DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Users
 
-Users are defined in `data/config.json` (see [`config.example.json`](../config.example.json)):
+Two commands manage the users. Run them on the running container, at any time, without a
+restart:
+
+```bash
+docker exec texdrop python -m texdrop adduser alice       # adds the user and prints their token
+docker exec texdrop python -m texdrop reset-token alice   # gives the user a new token and prints it
+```
+
+With Docker Compose, they start with `docker compose exec texdrop` instead of
+`docker exec texdrop`. Without Docker, set the same environment as the server's:
+`DATA_DIR=~/latex-data .venv/bin/python -m texdrop adduser alice`.
+
+A user name is 1-32 of `a-z 0-9 _ -`, starting with a letter or a digit, and is also the
+name of the user's directory. All users are equal: each one sees only their own jobs, and
+there is no administrator account.
+
+A token is what its user logs in with on the web page, and what their scripts and agents
+send. `reset-token` is for a token that is lost or leaked: the old token stops working at
+once, so the user has to log in again and to give the new one to their scripts and agents.
+Both commands print the token alone on standard output and their message on standard error,
+so a script can write `token=$(docker exec texdrop python -m texdrop adduser alice)`. They
+exit with status 1, and change nothing, if the user already exists (`adduser`) or does not
+(`reset-token`), if the name is invalid, or if the file is invalid or cannot be written.
+
+To remove a user, delete their line from the file (see below). Their jobs stay, in
+`users/<user>` and in the database, until `AUTO_DELETE_DAYS` removes them, and a new user
+added later with the same name would see them: to remove them at once, have the user press
+**Delete all** on the web page first.
+
+### The users file
+
+The commands keep the users in `data/users.json` (the `USERS_FILE` setting), which you can
+also edit by hand (see [`users.example.json`](../users.example.json)):
 
 ```json
 {"users": {"alice": "<token for alice>", "bob": "<token for bob>"}}
 ```
 
-A user name is 1-32 of `a-z 0-9 _ -` and is also the name of the user's directory. A token
-is 16-256 letters, digits or `._~+/=-`; make one with `openssl rand -hex 32`. The file is
-re-read when it changes, so users can be added or removed without a restart. An invalid
-file stops the server at startup; an invalid edit while it runs is ignored (with an error
-in the log).
+A token is 16-256 letters, digits or `._~+/=-`; make one with `openssl rand -hex 32`, as the
+commands do. Two users cannot share a token.
+
+The file is re-read when it changes, so users can be added or removed without a restart; a
+removed user's token stops working at once. An invalid file stops the server at startup;
+an invalid edit while it runs is ignored (with an error in the log), and the previous
+content stays in use. Without the file the server starts, logs a warning, and refuses every
+request.
+
+The file `adduser` creates can be read only by its owner, as it holds secrets: the
+container's user, uid 1001, so use `sudo` to edit it on the host. A file that already exists
+keeps its mode. It also keeps its owner if that is the user running the command, or if the
+command runs as root; otherwise the user running the command becomes its owner. Compilations
+can never read it: the server refuses to start if `USERS_FILE` lies in a directory that they
+can read, as it does for `DATA_DIR`.
+
+Older versions of TeXdrop kept the users in `data/config.json`. At its first start, the
+server renames that file to `users.json` (and says so in the log), unless `users.json`
+exists already or `USERS_FILE` names another file.
+
+The format is that of [PixDrop](https://github.com/nikolaos572/PixDrop)'s `users.json`, so
+one file can serve both services: point `USERS_FILE` at it, or mount it as
+`/data/users.json`:
+
+```bash
+docker run ... -v /srv/pixdrop/data/users.json:/data/users.json:ro ... texdrop
+```
+
+(Docker mounts the file itself: an editor that saves by writing a new file and renaming it
+leaves the container with the old one until it restarts.) The commands keep whatever else
+the file holds. They cannot change a file mounted with `:ro`, and say so: add the user where
+the file comes from, or mount it without `:ro`, for uid 1001 to write it.
 
 ## Environment variables
 
@@ -37,6 +97,7 @@ server at startup, with a message that names it.
 | Variable | Default | Meaning |
 |---|---|---|
 | `DATA_DIR` | `/data` | Where the service keeps everything: the users file, the jobs and the log. The Docker image uses the volume `/data`; without Docker, set it to a directory of your choice. |
+| `USERS_FILE` | `$DATA_DIR/users.json` | The [users](#users) file. |
 | `TZ` | `UTC` | Time zone of the dates the API and the web page show, and of the log (an IANA name such as `Europe/Athens`). Everything is stored in UTC. |
 | `AUTO_DELETE_DAYS` | `0` | Every day at 02:00 UTC, delete jobs (archive, PDF, log) that finished more than this many days ago. `0` never deletes. |
 | `COMPILE_TIMEOUT_MINUTES` | `15` | A compilation running longer is stopped and fails; the next job starts. |

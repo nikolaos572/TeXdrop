@@ -45,10 +45,16 @@ def create_app(settings: Settings | None = None, compiler: LatexCompiler | None 
             "Linux 6.12 or newer, on x86-64 or ARM64, with the server running as an unprivileged user. "
             "Set ALLOW_UNSANDBOXED=1 to start anyway, with the protections this system offers."
         )
-    if sandbox.readable_inside(settings.data_dir, tex_directories()):
-        raise SettingsError(f"DATA_DIR {settings.data_dir} lies in a directory that compilations can read")
+    for name, path in (("DATA_DIR", settings.data_dir), ("USERS_FILE", settings.users_file)):
+        if sandbox.readable_inside(path, tex_directories()):
+            raise SettingsError(f"{name} {path} lies in a directory that compilations can read")
     storage = Storage(settings.data_dir)
     storage.prepare()
+    if old_users_file := storage.adopt_old_users_file(settings.users_file):
+        log.info("renamed the users file %s to %s", old_users_file, settings.users_file)
+    users = UserRegistry(settings.users_file)
+    if not users.names():
+        log.warning("no users yet: add one with python -m texdrop adduser <name>")
     unpacker = Unpacker(settings.max_extracted_bytes, settings.unpack_timeout_seconds, settings.unpack_memory_bytes)
     service = JobService(
         JobStore(storage.db_path), storage, unpacker, max_user_storage_bytes=settings.max_user_storage_bytes
@@ -89,7 +95,7 @@ def create_app(settings: Settings | None = None, compiler: LatexCompiler | None 
     app = FastAPI(title="TeXdrop", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.storage = storage
-    app.state.users = UserRegistry(storage.config_path)
+    app.state.users = users
     app.state.service = service
     app.state.worker = worker
     if mcp is not None:

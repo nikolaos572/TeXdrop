@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import time
 from pathlib import Path
@@ -52,9 +53,8 @@ class Server:
             *options, image,
         )  # fmt: skip
         port = docker("port", self.container, "8000/tcp").splitlines()[0].rsplit(":", 1)[1]
-        self.client = httpx2.Client(
-            base_url=f"http://127.0.0.1:{port}", headers={"Authorization": f"Bearer {TOKEN}"}, timeout=330
-        )
+        self.url = f"http://127.0.0.1:{port}"
+        self.client = httpx2.Client(base_url=self.url, headers={"Authorization": f"Bearer {TOKEN}"}, timeout=330)
         deadline = time.monotonic() + 60
         while True:
             try:
@@ -85,7 +85,7 @@ def data(tmp_path: Path, image: str):
     data = tmp_path / "data"
     data.mkdir()
     data.chmod(0o777)  # the container runs as uid 1001
-    (data / "config.json").write_text(json.dumps({"users": {"tester": TOKEN}}))
+    (data / "users.json").write_text(json.dumps({"users": {"tester": TOKEN}}))
     yield data
     # Let the host user remove what the container created.
     subprocess.run(["docker", "run", "--rm", "--volume", f"{data}:/data", "--entrypoint", "chmod", image, "-R", "a+rwX", "/data"])
@@ -104,8 +104,107 @@ def test_runs_as_an_unprivileged_user(server):
 
 
 def test_web_ui_and_auth(server):
-    assert 'id="login-form"' in httpx2.get(f"{server.client.base_url}/").text
-    assert httpx2.get(f"{server.client.base_url}/api/jobs").status_code == 401
+    assert 'id="login-form"' in httpx2.get(f"{server.url}/").text
+    assert httpx2.get(f"{server.url}/api/jobs").status_code == 401
+
+
+def manage(container: str, *arguments: str, user: str = "app") -> subprocess.CompletedProcess[str]:
+    """A command of python -m texdrop, as the administrator runs it with docker exec."""
+    command = ["docker", "exec", "--user", user, container, "python", "-m", "texdrop", *arguments]
+    return subprocess.run(command, capture_output=True, text=True, check=False)
+
+
+def session_of(server: Server, token: str) -> int:
+    return httpx2.get(f"{server.url}/api/session", headers={"Authorization": f"Bearer {token}"}).status_code
+
+
+def test_users_are_managed_while_the_server_runs(image, data):
+    (data / "users.json").unlink()
+    server = Server(image, data)
+    try:
+        assert session_of(server, TOKEN) == 401
+        added = manage(server.container, "adduser", "nikos")
+        assert added.returncode == 0, added.stderr
+        assert added.stderr == "Added user nikos. Their token:\n"
+        first = added.stdout.strip()
+        assert session_of(server, first) == 200
+        written = (data / "users.json").stat()
+        assert (written.st_uid, stat.S_IMODE(written.st_mode)) == (1001, 0o600)
+
+        reset = manage(server.container, "reset-token", "nikos")
+        assert reset.returncode == 0, reset.stderr
+        second = reset.stdout.strip()
+        assert (session_of(server, first), session_of(server, second)) == (401, 200)
+
+        refused = manage(server.container, "adduser", "nikos")
+        assert (refused.returncode, refused.stdout) == (1, "")
+        assert refused.stderr.startswith("error: user 'nikos' already exists")
+    finally:
+        server.stop()
+    restarted = Server(image, data)  # the server can read what the command wrote
+    try:
+        assert session_of(restarted, second) == 200
+    finally:
+        restarted.stop()
+
+
+def test_the_old_users_file_is_renamed_at_startup(image, data):
+    (data / "users.json").rename(data / "config.json")
+    server = Server(image, data)
+    try:
+        assert session_of(server, TOKEN) == 200
+        assert sorted(path.name for path in data.glob("*.json")) == ["users.json"]
+    finally:
+        server.stop()
+
+
+def test_a_command_run_as_root_keeps_the_file_readable_by_the_server(image, data):
+    server = Server(image, data, hardened=False)
+    try:
+        before = (data / "users.json").stat()
+        added = manage(server.container, "adduser", "nikos", user="root")
+        assert added.returncode == 0, added.stderr
+        after = (data / "users.json").stat()
+        assert (after.st_uid, after.st_gid, after.st_mode) == (before.st_uid, before.st_gid, before.st_mode)
+        assert after.st_ino != before.st_ino  # replaced, not written over
+        assert session_of(server, added.stdout.strip()) == 200
+    finally:
+        server.stop()
+
+
+def test_a_users_file_mounted_by_itself_is_written_over(image, data, tmp_path):
+    shared = tmp_path / "shared.json"
+    shared.write_text(json.dumps({"pixdrop": {"limit": 1}, "users": {"tester": TOKEN}}))
+    shared.chmod(0o666)
+    server = Server(image, data, "--volume", f"{shared}:/data/users.json")
+    try:
+        added = manage(server.container, "adduser", "nikos")
+        assert added.returncode == 0, added.stderr
+        token = added.stdout.strip()
+        assert json.loads(shared.read_text()) == {"pixdrop": {"limit": 1}, "users": {"tester": TOKEN, "nikos": token}}
+        assert session_of(server, token) == 200 and session_of(server, TOKEN) == 200
+        assert not list(data.glob(".*.tmp"))
+    finally:
+        server.stop()
+
+
+@pytest.mark.parametrize(("mode", "reason"), [(0o644, "Permission denied"), (0o666, "Read-only file system")])
+def test_a_users_file_mounted_read_only_is_refused(image, data, tmp_path, mode, reason):
+    shared = tmp_path / "shared.json"
+    shared.write_text(json.dumps({"users": {"tester": TOKEN}}))
+    shared.chmod(mode)
+    before = shared.read_bytes()
+    server = Server(image, data, "--volume", f"{shared}:/data/users.json:ro")
+    try:
+        refused = manage(server.container, "adduser", "nikos")
+        assert (refused.returncode, refused.stdout) == (1, "")
+        assert refused.stderr.startswith("error: ") and reason in refused.stderr and "/data/users.json" in refused.stderr
+        assert "Traceback" not in refused.stderr
+        assert shared.read_bytes() == before
+        assert session_of(server, TOKEN) == 200
+        assert not list(data.glob(".*.tmp"))
+    finally:
+        server.stop()
 
 
 def test_info_names_the_tex_live_release(server):
@@ -147,8 +246,8 @@ def test_engines_with_biblatex_and_minted(server, tmp_path, engine):
 
 def test_documents_cannot_read_the_token_file(server, tmp_path):
     attempts = {
-        "pdflatex": "\\input{/data/config.json}",
-        "lualatex": '\\directlua{local f = io.open("/data/config.json") texio.write_nl(f and f:read("a") or "BLOCKED")}',
+        "pdflatex": "\\input{/data/users.json}",
+        "lualatex": '\\directlua{local f = io.open("/data/users.json") texio.write_nl(f and f:read("a") or "BLOCKED")}',
     }
     for engine, attempt in attempts.items():
         job = server.compile(

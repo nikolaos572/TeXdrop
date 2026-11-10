@@ -8,6 +8,7 @@ from texdrop.settings import Settings, SettingsError
 def test_defaults():
     settings = Settings.from_env({})
     assert settings.data_dir == Path("/data")
+    assert settings.users_file == Path("/data/users.json")
     assert settings.timezone.key == "UTC"
     assert settings.auto_delete_days == 0
     assert settings.compile_timeout_seconds == 900
@@ -24,6 +25,7 @@ def test_values_from_environment():
     settings = Settings.from_env(
         {
             "DATA_DIR": "/srv/latex",
+            "USERS_FILE": "/srv/shared/users.json",
             "TZ": "Europe/Athens",
             "AUTO_DELETE_DAYS": "15",
             "COMPILE_TIMEOUT_MINUTES": "150",
@@ -40,6 +42,7 @@ def test_values_from_environment():
         }
     )
     assert settings.data_dir == Path("/srv/latex")
+    assert settings.users_file == Path("/srv/shared/users.json")
     assert settings.timezone.key == "Europe/Athens"
     assert settings.auto_delete_days == 15
     assert settings.compile_timeout_seconds == 150 * 60
@@ -59,7 +62,9 @@ def test_empty_values_mean_default():
 
 def test_relative_data_dir_is_made_absolute(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)  # compilations run elsewhere, where a relative path would point to nothing
-    assert Settings.from_env({"DATA_DIR": "data"}).data_dir == tmp_path / "data"
+    settings = Settings.from_env({"DATA_DIR": "data"})
+    assert (settings.data_dir, settings.users_file) == (tmp_path / "data", tmp_path / "data" / "users.json")
+    assert Settings.from_env({"USERS_FILE": "users.json"}).users_file == tmp_path / "users.json"
 
 
 @pytest.mark.parametrize(("value", "expected"), [("", False), ("0", False), ("no", False), ("1", True), ("True", True)])

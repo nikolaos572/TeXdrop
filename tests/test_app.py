@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from texdrop.app import create_app
 from texdrop.settings import SettingsError
-from texdrop.users import ConfigError
+from texdrop.errors import ConfigError
 
 INCOMPLETE = [(0, True, "no Landlock"), (3, True, "signals"), (6, False, "UDP")]  # Landlock ABI, filter
 
@@ -61,8 +61,29 @@ def test_data_dir_must_not_be_inside_tex(settings, fake_compiler, monkeypatch):
         create_app(settings, fake_compiler)
 
 
+def test_users_file_must_not_be_readable_by_compilations(settings, fake_compiler):
+    with pytest.raises(SettingsError, match="USERS_FILE /etc/texdrop-users.json lies in a directory that compilations can read"):
+        create_app(dataclasses.replace(settings, users_file=Path("/etc/texdrop-users.json")), fake_compiler)
+
+
+def test_startup_renames_the_old_users_file(settings, fake_compiler, caplog):
+    caplog.set_level(logging.INFO)
+    settings.users_file.rename(settings.data_dir / "config.json")
+    app = create_app(settings, fake_compiler)
+    assert sorted(path.name for path in settings.data_dir.glob("*.json")) == ["users.json"]
+    assert app.state.users.names() == ["alice", "bob"]
+    assert f"renamed the users file {settings.data_dir / 'config.json'} to {settings.users_file}" in caplog.text
+
+
+def test_startup_without_users_says_how_to_add_one(settings, fake_compiler, caplog):
+    settings.users_file.unlink()
+    create_app(settings, fake_compiler)
+    warnings = [record.getMessage() for record in caplog.records if record.levelno == logging.WARNING]
+    assert "no users yet: add one with python -m texdrop adduser <name>" in warnings
+
+
 def test_invalid_users_file_stops_startup(settings, fake_compiler):
-    (settings.data_dir / "config.json").write_text('{"users": {"Bad Name": "0123456789abcdef"}}')
+    (settings.users_file).write_text('{"users": {"Bad Name": "0123456789abcdef"}}')
     with pytest.raises(ConfigError):
         create_app(settings, fake_compiler)
 

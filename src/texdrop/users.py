@@ -1,30 +1,27 @@
-"""Users and their API tokens, read from a JSON file the administrator edits.
+"""Users and their API tokens, read from a JSON file (USERS_FILE), which the administrator
+changes with commands (accounts.py) or by hand.
 
-The file maps user names to tokens, for example::
+The file maps user names to tokens, in the same format as PixDrop's, so that one file can
+serve both::
 
     {"users": {"alice": "4c1f...", "bob": "9e0d..."}}
 
-The user name is also the name of the user's storage directory. The file is
-re-read whenever it changes, so users can be added or removed without a restart.
+The user name is also the name of the user's storage directory. All users are equal: each
+one sees only their own jobs. The file is re-read when it changes, so users can be added
+or removed without a restart.
 """
 
 from __future__ import annotations
 
-import hmac
-import json
-import logging
 import re
-import threading
+import secrets
 from pathlib import Path
 
-log = logging.getLogger(__name__)
+from .errors import ConfigError
+from .watched import WatchedJsonFile
 
 NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9._~+/=-]{16,256}")  # safe in headers and cookies
-
-
-class ConfigError(ValueError):
-    """The users file is malformed."""
 
 
 def parse_users(raw: object) -> dict[str, str]:
@@ -45,52 +42,24 @@ def parse_users(raw: object) -> dict[str, str]:
 
 
 class UserRegistry:
-    """Maps tokens to user names, reloading the file when it changes."""
+    """Maps tokens to user names, reloading the file when it changes. Without the file,
+    every request is rejected."""
 
     def __init__(self, path: Path) -> None:
-        self._path = path
-        self._lock = threading.Lock()
-        self._signature: tuple[int, int] | None = None
-        self._tokens: dict[str, str] = {}
-        self._reload(strict=True)
+        self._file = WatchedJsonFile(path, parse_users, {}, "users")
 
     def authenticate(self, token: str) -> str | None:
         """Return the user owning `token`, or None."""
-        with self._lock:
-            self._reload(strict=False)
-            tokens = self._tokens
         candidate = token.encode()
         user = None
-        for known, name in tokens.items():  # compare against all, in constant time
-            if hmac.compare_digest(known.encode(), candidate):
+        for known, name in self._file.current().items():  # compare against all, in constant time
+            if secrets.compare_digest(known.encode(), candidate):
                 user = name
         return user
 
     def exists(self, user: str) -> bool:
         """Whether `user` is (still) in the file."""
-        with self._lock:
-            self._reload(strict=False)
-            return user in self._tokens.values()
+        return user in self._file.current().values()
 
-    def _reload(self, *, strict: bool) -> None:
-        """Re-read the file if it changed. A broken edit keeps the previous users,
-        except at startup (`strict`), where it is an error."""
-        try:
-            stat = self._path.stat()
-        except FileNotFoundError:
-            if self._signature != (0, 0):
-                log.warning("users file %s not found: every request will be rejected", self._path)
-            self._signature, self._tokens = (0, 0), {}
-            return
-        signature = (stat.st_mtime_ns, stat.st_size)
-        if signature == self._signature:
-            return
-        self._signature = signature
-        try:
-            self._tokens = parse_users(json.loads(self._path.read_text(encoding="utf-8")))
-        except (OSError, ValueError) as exc:  # ConfigError and JSONDecodeError are ValueErrors
-            if strict:
-                raise ConfigError(f"{self._path}: {exc}") from exc
-            log.error("ignoring invalid users file %s (keeping the previous users): %s", self._path, exc)
-            return
-        log.info("loaded %d user(s) from %s", len(self._tokens), self._path)
+    def names(self) -> list[str]:
+        return sorted(self._file.current().values())

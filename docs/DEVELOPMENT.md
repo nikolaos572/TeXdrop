@@ -15,12 +15,14 @@ connection per operation, and files are moved inside the same transactions. Jobs
 interrupted by a restart are queued again.
 
 The code is in `src/texdrop/`, one module per concern, each starting with a docstring
-that says what it does: `settings`, `users` (tokens), `store` (SQLite), `storage` (file
-layout), `archive` (safe extraction and main-file detection), `unpack` (runs `archive` in a
-confined helper process), `sandbox`, `compiler`, `jobs` (job lifecycle), `worker` (queue),
-`cleanup` (auto-delete), `auth`, `api`, `links` (transfer links), `mcp_server` (the MCP
-server for AI agents, whose tools call `api`'s code), `web`, `logs` and `app` (wiring). The web page is
-plain HTML, CSS and JavaScript in `src/texdrop/static/`, with no build step.
+that says what it does: `settings`, `users` (tokens), `watched` (the users file, re-read
+when it changes), `store` (SQLite), `storage` (file layout), `archive` (safe extraction and
+main-file detection), `unpack` (runs `archive` in a confined helper process), `sandbox`,
+`compiler`, `jobs` (job lifecycle), `worker` (queue), `cleanup` (auto-delete), `auth`,
+`api`, `links` (transfer links), `mcp_server` (the MCP server for AI agents, whose tools call
+`api`'s code), `web`, `logs`, `errors`, `app` (wiring), `accounts` (the commands' changes to
+the users file) and `__main__` (the server, and the `adduser` and `reset-token` commands).
+The web page is plain HTML, CSS and JavaScript in `src/texdrop/static/`, with no build step.
 What keeps documents apart is described in [SECURITY.md](SECURITY.md).
 
 ## Tests

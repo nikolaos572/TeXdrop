@@ -1,6 +1,6 @@
 # Deployment
 
-How to build and run the service. The users file and the settings are described in
+How to build and run the service. The users and the settings are described in
 [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Requirements
@@ -29,18 +29,23 @@ the locale) get none, and their documents compile without it.
 The container runs as uid 1001, which must own the data directory:
 
 ```bash
-mkdir data                                   # then create data/config.json (see CONFIGURATION.md)
+mkdir data
 sudo chown -R 1001:1001 data
 
 docker run -d --name texdrop -p 8000:8000 -v "$PWD/data:/data" \
   -e TZ=Europe/Athens -e AUTO_DELETE_DAYS=15 \
   --cap-drop ALL --security-opt no-new-privileges --restart unless-stopped \
   texdrop
+
+docker exec texdrop python -m texdrop adduser alice    # prints alice's token
 ```
 
-or `docker compose up -d` with [`compose.yaml`](../compose.yaml). Everything the service stores
-is in the data directory, so the container can be removed and started again from a new
-image (`docker rm -f texdrop`, then the same `docker run`) without losing anything.
+or `docker compose up -d` with [`compose.yaml`](../compose.yaml), and the same command with
+`docker compose exec texdrop` instead of `docker exec texdrop`. Until a user exists, the
+server refuses every request; [CONFIGURATION.md](CONFIGURATION.md#users) has more on the
+users. Everything the service stores is in the data directory, so the container can be
+removed and started again from a new image (`docker rm -f texdrop`, then the same
+`docker run`) without losing anything.
 
 `docker run` and compose are equivalent: `compose.yaml` only writes down the same options,
 and every setting is an environment variable, which `-e` sets as well. Safety does not
@@ -74,7 +79,8 @@ startup). Then, as an unprivileged user (best a dedicated one):
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install .
-mkdir -p ~/latex-data                        # then create ~/latex-data/config.json
+mkdir -p ~/latex-data
+DATA_DIR=~/latex-data .venv/bin/python -m texdrop adduser alice    # prints alice's token
 DATA_DIR=~/latex-data PORT=8000 .venv/bin/python -m texdrop
 ```
 
@@ -87,7 +93,7 @@ take a few seconds longer.
 
 ```
 data/
-├── config.json                        users and tokens (you create this)
+├── users.json                         users and tokens (python -m texdrop adduser creates this)
 ├── jobs.db                            job metadata (SQLite)
 ├── users/<user>/inputs/<id>.zip       uploaded archives
 ├── users/<user>/outputs/<id>.pdf      compiled documents

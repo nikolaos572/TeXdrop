@@ -32,10 +32,11 @@ def make_archive(tmp_path: Path) -> ArchiveFactory:
 def settings(tmp_path: Path) -> Settings:
     data = tmp_path / "data"
     data.mkdir()
-    (data / "config.json").write_text(json.dumps({"users": TOKENS}))
+    (data / "users.json").write_text(json.dumps({"users": TOKENS}))
     return Settings(
         data_dir=data,
         timezone=ZoneInfo("Europe/Athens"),
+        users_file=data / "users.json",
         auto_delete_days=0,
         compile_timeout_seconds=30,
         max_upload_bytes=2 * 1024**2,
@@ -48,7 +49,7 @@ def data(tmp_path: Path) -> Path:
     """A data directory with the test users, for the real server (helpers.start_server)."""
     data = tmp_path / "data"
     data.mkdir()
-    (data / "config.json").write_text(json.dumps({"users": TOKENS}))
+    (data / "users.json").write_text(json.dumps({"users": TOKENS}))
     return data
 
 

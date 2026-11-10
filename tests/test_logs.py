@@ -209,9 +209,9 @@ def test_log_times_are_in_the_tz_time_zone(data):
 
 
 def test_startup_errors_reach_the_log_file(data):
-    (data / "config.json").write_text('{"users": {"Bad Name": "0123456789abcdef"}}')
+    (data / "users.json").write_text('{"users": {"Bad Name": "0123456789abcdef"}}')
     assert failed_start(data).endswith(
-        f"ERROR   cannot start: {data / 'config.json'}: invalid user name 'Bad Name': use 1-32 of a-z, 0-9, '_' and '-'"
+        f"ERROR   cannot start: {data / 'users.json'}: invalid user name 'Bad Name': use 1-32 of a-z, 0-9, '_' and '-'"
     )
     assert failed_start(data, COMPILE_TIMEOUT_MINUTES="soon").endswith(
         "ERROR   cannot start: COMPILE_TIMEOUT_MINUTES must be an integer, got 'soon'"

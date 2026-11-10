@@ -256,7 +256,7 @@ def test_wrong_kind_of_link(agent, make_archive):
 def test_links_of_removed_users_stop_working(agent, mcp_settings, make_archive, caplog):
     caplog.set_level(logging.INFO)
     link = agent.call("upload_link")
-    config = mcp_settings.data_dir / "config.json"
+    config = mcp_settings.users_file
     config.write_text(json.dumps({"users": {"bob": TOKENS["bob"]}}))
     os.utime(config, ns=(1, 1))  # noticed even on coarse clocks
     assert agent.upload(link, make_archive({"main.tex": MINIMAL_TEX})).status_code == 404

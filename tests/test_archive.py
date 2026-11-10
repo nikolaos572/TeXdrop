@@ -71,7 +71,7 @@ def test_links_are_rejected(tmp_path, kind):
         archive.addfile(_member("main.tex", MINIMAL_TEX), io.BytesIO(MINIMAL_TEX.encode()))
         link = tarfile.TarInfo("secret.tex")
         link.type = kind
-        link.linkname = "/data/config.json" if kind == tarfile.SYMTYPE else "main.tex"
+        link.linkname = "/data/users.json" if kind == tarfile.SYMTYPE else "main.tex"
         archive.addfile(link)
     with pytest.raises(ArchiveError, match="links are not allowed"):
         inspect_archive(path, LIMIT)
@@ -92,7 +92,7 @@ def test_zip_symlink_is_rejected(tmp_path):
     with zipfile.ZipFile(path, "w") as archive:
         info = zipfile.ZipInfo("link.tex")
         info.external_attr = (0o120777 << 16)  # symlink mode bits
-        archive.writestr(info, "/data/config.json")
+        archive.writestr(info, "/data/users.json")
     with pytest.raises(ArchiveError, match="links are not allowed"):
         inspect_archive(path, LIMIT)
 

@@ -8,6 +8,9 @@ build
 dist
 data
 tests
+docs
+users.json
+config.json
 *.zip
 *.7z
 *.tar
