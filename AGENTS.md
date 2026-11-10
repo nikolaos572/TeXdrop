@@ -10,7 +10,7 @@ SQLite for the job queue, no frontend build step.
 - `docs/`: deployment, configuration (every environment variable), API, security, development.
 
 ```bash
-python -m venv .venv && .venv/bin/pip install -e ".[dev]"   # needs libarchive
+python -m venv .venv && .venv/bin/pip install -r requirements.txt -e ".[dev]"   # needs libarchive
 .venv/bin/python -m pytest -m "not docker"                  # unit and integration tests
 .venv/bin/python -m pytest -m docker                         # the Docker image
 ```

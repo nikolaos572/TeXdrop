@@ -35,9 +35,14 @@ RUN groupadd --system --gid 61001 app \
  && mkdir /data && chown app:app /data
 
 WORKDIR /app
+# requirements.txt pins every package the image installs, the indirect ones and setuptools
+# (which builds TeXdrop) included. --no-deps installs exactly that list, and pip check then
+# fails the build if the list is incomplete, instead of pip quietly adding an unpinned package.
+COPY requirements.txt ./
+RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir --no-deps -r requirements.txt
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir .
+RUN /opt/venv/bin/pip install --no-cache-dir --no-deps --no-build-isolation . && /opt/venv/bin/pip check
 
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \

@@ -18,7 +18,10 @@ docker build --pull -t texdrop .
 ```
 
 Rebuild now and then with `--pull`: that brings in the security fixes of TeX Live and of the
-programs it runs (Ghostscript), and of the archive library.
+programs it runs (Ghostscript), of Python and of the archive library. The Python packages are
+pinned to exact versions in `requirements.txt`, so every build installs the same ones; they
+change with new versions of TeXdrop (see
+[Updating dependencies](DEVELOPMENT.md#updating-dependencies)).
 
 Like Overleaf, the image has Ghostscript (EPS figures, the LaTeX + dvipdf route) but no Java,
 so packages that ask Java for information (`texosquery`, used for example by `datetime2` for
@@ -89,7 +92,7 @@ the server finds it through `PATH` and lets compilations read its directories (l
 startup). Then, as an unprivileged user (best a dedicated one):
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install .
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt .   # the versions the image has
 mkdir -p ~/latex-data
 DATA_DIR=~/latex-data .venv/bin/python -m texdrop adduser alice    # prints alice's token
 DATA_DIR=~/latex-data PORT=8000 .venv/bin/python -m texdrop
