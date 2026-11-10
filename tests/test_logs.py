@@ -90,6 +90,20 @@ def test_the_client_comes_from_x_forwarded_for_of_trusted_proxies_only(settings,
     ]
 
 
+def test_tokens_in_the_url_are_hidden(app, caplog):
+    # Refused (TeXdrop takes tokens only in the Authorization header), but never logged either.
+    caplog.set_level(logging.INFO)
+    anonymous = TestClient(app)
+    assert anonymous.get(f"/api/jobs?page=1&token={TOKENS['alice']}").status_code == 401
+    assert anonymous.get(f"/api/jobs?%74oken={TOKENS['bob']}&TOKEN={TOKENS['alice']}").status_code == 401
+    assert access_lines(caplog) == [
+        "testclient - GET /api/jobs?page=1&token=*** 401 N ms: missing or invalid token",
+        "testclient - GET /api/jobs?%74oken=***&TOKEN=*** 401 N ms: missing or invalid token",
+    ]
+    server = "\n".join(record.getMessage() for record in caplog.records if record.name.startswith("texdrop"))
+    assert TOKENS["alice"] not in server and TOKENS["bob"] not in server  # the test client logs its URLs itself
+
+
 def test_unexpected_errors_are_logged_as_errors(app, client, monkeypatch, caplog):
     monkeypatch.setattr(app.state.service, "list", lambda *args, **kwargs: 1 / 0)
     failing = TestClient(app, headers=client.headers, raise_server_exceptions=False)

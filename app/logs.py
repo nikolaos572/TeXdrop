@@ -1,7 +1,9 @@
 """The server's log: on the console (docker logs) and in a size-limited file in the data directory.
 
 Each line is one event: a fact at startup, a finished job, a request (access_log),
-or an error, which comes with its traceback when it is unexpected.
+or an error, which comes with its traceback when it is unexpected. Tokens never appear in
+it: a `token=` in a URL (which the server refuses, but clients of PixDrop may try) is
+logged as `token=***`, and the secrets of transfer links as `***`.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, unquote_plus
 
 from fastapi import Request, Response
 
@@ -59,6 +61,16 @@ def record_error(request: Request, detail: str) -> None:
     request.state.error = detail
 
 
+def redacted_query(query: str) -> str:
+    """A query string with the value of any token parameter hidden, however its name is
+    written (the server decodes ?%74oken= as ?token=)."""
+    parts = []
+    for part in query.split("&"):
+        name, equals, _ = part.partition("=")
+        parts.append(f"{name}=***" if equals and unquote_plus(name).lower() == "token" else part)
+    return "&".join(parts)
+
+
 async def access_log(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     """Log each request on one line: client, user, request, status, duration and, if it
     failed, why. Successful reads are left out, except downloads: the web page repeats
@@ -79,7 +91,7 @@ def _log_request(request: Request, status: int, start: float) -> None:
         return
     target = _LINK_SECRET.sub("***", quote(path))
     if query := request.scope["query_string"]:
-        target += "?" + one_line(query.decode("latin-1"))
+        target += "?" + one_line(redacted_query(query.decode("latin-1")))
     user = getattr(request.state, "user", "-")
     line = f"{client_ip(request)} {user} {request.method} {target} {status} {(time.monotonic() - start) * 1000:.0f} ms"
     if error := getattr(request.state, "error", None):
