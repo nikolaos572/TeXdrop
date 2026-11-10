@@ -207,8 +207,11 @@ matters is what matters for the rest of the service (see
 - **The same token and the same rights.** The agent uses a user's token and can do what
   that user can do through the API, on all their jobs, including deleting them all; the
   delete tools are marked destructive so that agents ask first. The endpoint accepts the
-  token only in the `Authorization` header, never the web page's cookie, so another web
-  site cannot call it from your browser.
+  token only in the `Authorization` header, never the web page's cookie, and refuses
+  (`403`) calls that a browser sends from a page of another site (its `Origin` header), so
+  another web site cannot call it from your browser. An MCP client that runs in a web page,
+  such as a browser-based inspector, is refused for the same reason: use one that runs
+  outside the browser, as agents do.
 - **The token stays out of the model.** The agent's MCP client adds the header itself: the
   token is not in the tools' descriptions, arguments or results, nor in the commands the
   agent runs. It is stored in the client's configuration file, in plain text: keep that
