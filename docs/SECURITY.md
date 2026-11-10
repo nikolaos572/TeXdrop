@@ -55,10 +55,10 @@ disk as it is given. This page describes what keeps documents and users apart, a
   cookie is `HttpOnly`, `SameSite=Strict`, `Secure` over HTTPS, and changes made with it
   require a header that other sites cannot send. Pages are served with a strict Content
   Security Policy.
-- A `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` header is not this server's is refused
-  (`403`) before anything else happens, the token and the body included: with
-  `PUBLIC_BASE_URL`, the origin must be exactly its scheme, host and port; without it, its
-  host must be the one the request was sent to. That stops forged requests from every other
+- With `PUBLIC_BASE_URL` set, a `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` header is
+  not exactly its scheme, host and port is refused (`403`) before anything else happens, the
+  token and the body included (without it, the server cannot tell its own address behind a
+  proxy, so `Origin` is not checked; the cookie's protections still apply). That stops forged requests from every other
   site, sibling subdomains such as `blog.example.com` included (`SameSite` cookies take those
   for the same site), also to the MCP server and the transfer links. Browsers always send
   `Origin` with these requests; requests without it (curl, scripts, agents) cannot be forged
@@ -132,9 +132,9 @@ These are not:
 - A document using the time, memory and disk it is allowed: set the limits in
   [CONFIGURATION.md](CONFIGURATION.md) and the [container's limits](DEPLOYMENT.md#container-limits).
 - Tokens or transfer links read off a connection without HTTPS.
-- Transfer links bound to the wrong address because of the deployment: behind a reverse
-  proxy that `FORWARDED_ALLOW_IPS` does not name, or with `FORWARDED_ALLOW_IPS=*` while
-  TeXdrop's port can be reached without the proxy.
+- Transfer links bound to the wrong address because of the deployment: with
+  `FORWARDED_ALLOW_IPS=*` (the default) while TeXdrop's port can be reached without the proxy,
+  or behind a proxy that `FORWARDED_ALLOW_IPS` does not name.
 - What an AI agent does with the errors and logs of the documents it compiles.
 - Bugs in TeX Live, Ghostscript or the other programs in the image: report them to their
   maintainers. They are a TeXdrop vulnerability when they let a document get past the sandbox.

@@ -166,8 +166,6 @@ def test_web_ui_and_auth(server):
     assert 'id="login-form"' not in httpx2.get(f"{server.url}/", headers=cookie).text
     assert httpx2.delete(f"{server.url}/api/session", headers=cookie).status_code == 204
     assert 'id="login-form"' in httpx2.get(f"{server.url}/", headers=cookie).text  # a copy of the cookie is logged out too
-    refused = httpx2.post(f"{server.url}/api/session", json={"token": TOKEN}, headers={"Origin": "https://evil.example"})
-    assert refused.status_code == 403 and "set-cookie" not in refused.headers  # sent from a page of another site
 
 
 def manage(container: str, *arguments: str, user: str = "app") -> subprocess.CompletedProcess[str]:
@@ -282,15 +280,21 @@ def logged_client(server: Server, forwarded_for: str) -> str:
     return match.group(1)
 
 
-def test_x_forwarded_for_counts_only_from_a_trusted_proxy(image, data):
-    # By default no proxy is trusted, so a client cannot put any address it likes in the log.
+def test_the_visitors_address_behind_a_proxy(image, data):
+    # By default any peer may be the proxy, so the log shows the address of X-Forwarded-For at once.
     server = Server(image, data)
+    try:
+        assert logged_client(server, "203.0.113.7") == "203.0.113.7"
+    finally:
+        server.stop()
+    # With a proxy named, the header of any other peer is ignored: the log shows the peer itself.
+    server = Server(image, data, "--env", "FORWARDED_ALLOW_IPS=192.0.2.1")
     try:
         peer = logged_client(server, "203.0.113.7")
         assert peer != "203.0.113.7"
     finally:
         server.stop()
-    # Trusting exactly that peer, as the docs say to find it, the log shows the visitor's address.
+    # Naming exactly that peer, as the docs say to find the proxy's address, its header counts again.
     server = Server(image, data, "--env", f"FORWARDED_ALLOW_IPS={peer}")
     try:
         assert logged_client(server, "203.0.113.7") == "203.0.113.7"
@@ -386,12 +390,16 @@ def test_limits_come_from_the_environment(image, data):
     server = Server(
         image, data,
         "--env", "COMPILE_MEMORY_MB=2048", "--env", "COMPILE_DISK_MB=1024", "--env", "MAX_USER_STORAGE_MB=500",
-        "--env", "UNPACK_TIMEOUT_MINUTES=2", "--env", "UNPACK_MEMORY_MB=512",
+        "--env", "UNPACK_TIMEOUT_MINUTES=2", "--env", "UNPACK_MEMORY_MB=512", "--env", "PUBLIC_BASE_URL=https://tex.example.com",
     )  # fmt: skip
     try:
         info = server.client.get("/api/info").json()["server"]
         assert (info["compile_memory_mb"], info["compile_disk_mb"], info["max_user_storage_mb"]) == (2048, 1024, 500)
         assert (info["unpack_timeout_minutes"], info["unpack_memory_mb"]) == (2, 512)
+        login = {"json": {"token": TOKEN}, "headers": {"Origin": "https://evil.example"}}
+        assert httpx2.post(f"{server.url}/api/session", **login).status_code == 403  # from a page at another address
+        login["headers"]["Origin"] = "https://tex.example.com"
+        assert "Secure" in httpx2.post(f"{server.url}/api/session", **login).headers["set-cookie"]
     finally:
         server.stop()
 

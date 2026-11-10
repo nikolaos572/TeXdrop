@@ -55,10 +55,9 @@ Linux 6.12 or newer.
 > user TeXdrop runs as, first: `sudo chown 61001:61001 /your/dir`. See
 > [Deployment](docs/DEPLOYMENT.md#a-directory-on-the-host).
 
-> Behind an HTTPS reverse proxy, also set `PUBLIC_BASE_URL` (such as
-> `https://texdrop.example.com`), the address users reach, and `FORWARDED_ALLOW_IPS`, your
-> proxy's address, so that the log shows each visitor's own: see
-> [Reverse proxies](docs/DEPLOYMENT.md#reverse-proxies).
+> It also works behind an HTTPS reverse proxy as it is. There, set `PUBLIC_BASE_URL` to the
+> address users reach (such as `https://texdrop.example.com`), so that browsers may send
+> changes only from pages at that address: see [Reverse proxies](docs/DEPLOYMENT.md#reverse-proxies).
 
 ## Documentation
 

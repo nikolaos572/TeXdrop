@@ -32,7 +32,7 @@ class Settings:
     allow_unsandboxed: bool = False  # start even where the sandbox lacks some of its protections
     enable_mcp: bool = False  # serve the MCP endpoint for AI agents, and its transfer links
     link_expiry_seconds: float = 3600  # a transfer link not used by then stops working
-    forwarded_allow_ips: str = "127.0.0.1"  # reverse proxies whose X-Forwarded-* headers are trusted ("*": any peer)
+    forwarded_allow_ips: str = "*"  # reverse proxies whose X-Forwarded-* headers are trusted ("*": any peer)
     host: str = "0.0.0.0"  # where the server listens (without Docker; Docker maps the port instead)
     port: int = 8000
 
@@ -101,7 +101,7 @@ def _proxies(raw: str) -> str:
     172.17.0.1/16) without a word, and every visitor would keep the proxy's address."""
     raw = raw.strip()
     if raw in ("", "*"):
-        return raw or "127.0.0.1"
+        return "*"
     entries = [entry.strip() for entry in raw.split(",")]
     for entry in entries:
         try:
